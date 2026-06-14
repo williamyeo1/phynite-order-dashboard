@@ -10,6 +10,7 @@ import {
   PageHeader,
   PrimaryButton,
 } from "@/components/dashboard";
+import { useHydratedStorage } from "@/lib/useHydratedStorage";
 
 type Streamer = {
   id: number;
@@ -99,33 +100,7 @@ function Input({
 }
 
 export default function StreamersPage() {
-  const [streamers, setStreamers] = useState<Streamer[]>(() => {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const saved = localStorage.getItem("streamers");
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-});
-
-const [hasLoaded, setHasLoaded] = useState(false);
-
-useEffect(() => {
-  setHasLoaded(true);
-}, []);
-
-useEffect(() => {
-  if (!hasLoaded) return;
-
-  localStorage.setItem(
-    "streamers",
-    JSON.stringify(streamers)
-  );
-}, [streamers, hasLoaded]);
+  const [streamers, setStreamers] = useHydratedStorage<Streamer[]>("streamers", []);
   const [search, setSearch] = useState("");
 
   const [showModal, setShowModal] = useState(false);

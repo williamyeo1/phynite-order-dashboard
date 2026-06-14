@@ -10,6 +10,7 @@ import {
   PrimaryButton,
 } from "@/components/dashboard"
 import { TimePeriodFilter } from "@/components/TimePeriodFilter"
+import { useHydratedStorage } from "@/lib/useHydratedStorage"
 import {
   DEFAULT_TIME_FILTER,
   isDateInTimeFilter,
@@ -144,35 +145,7 @@ export default function OrdersPage() {
   }, [])
 
   // LOAD ORDERS
-  
-    const [orders, setOrders] = useState<Order[]>(() => {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const saved = localStorage.getItem("orders");
-
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-});
-
-const [ordersLoaded, setOrdersLoaded] = useState(false);
-
-useEffect(() => {
-  setOrdersLoaded(true);
-}, []);
-
-useEffect(() => {
-  if (!ordersLoaded) return;
-
-  localStorage.setItem(
-    "orders",
-    JSON.stringify(orders)
-  );
-}, [orders, ordersLoaded]);
+  const [orders, setOrders] = useHydratedStorage<Order[]>("orders", [])
 
   const displayedOrders = useMemo(() => {
     return orders.filter((order) => isDateInTimeFilter(order.date, timeFilter))

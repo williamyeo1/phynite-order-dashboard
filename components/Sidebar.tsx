@@ -9,6 +9,7 @@ const links = [
   { name: "Orders", href: "/orders" },
   { name: "Production", href: "/production" },
   { name: "Shipping", href: "/shipping" },
+  { name: "Settings", href: "/settings" },
 ]
 
 export default function Sidebar() {

@@ -33,6 +33,7 @@ import {
   isDateInTimeFilter,
   type TimeFilter,
 } from "@/lib/timeFilter"
+import { useHydratedStorage } from "@/lib/useHydratedStorage"
 
 type LeadStatus =
   | "new"
@@ -297,17 +298,7 @@ function parsedToLead(row: ParsedLeadRow, id: number): Lead {
 export default function CRMPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [leads, setLeads] = useState<Lead[]>(() => {
-    if (typeof window === "undefined") return []
-    try {
-      const saved = localStorage.getItem("crm")
-      return saved ? JSON.parse(saved) : []
-    } catch {
-      return []
-    }
-  })
-
-  const [hasLoaded, setHasLoaded] = useState(false)
+  const [leads, setLeads] = useHydratedStorage<Lead[]>("crm", [])
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -329,15 +320,6 @@ export default function CRMPage() {
   const [streamerForm, setStreamerForm] = useState<StreamerFormData>(
     EMPTY_STREAMER_FORM
   )
-
-  useEffect(() => {
-    setHasLoaded(true)
-  }, [])
-
-  useEffect(() => {
-    if (!hasLoaded) return
-    localStorage.setItem("crm", JSON.stringify(leads))
-  }, [leads, hasLoaded])
 
   function saveLeads(updated: Lead[]) {
     setLeads(updated)
