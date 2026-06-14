@@ -33,7 +33,8 @@ import {
   isDateInTimeFilter,
   type TimeFilter,
 } from "@/lib/timeFilter"
-import { useHydratedStorage } from "@/lib/useHydratedStorage"
+import { useSharedStorage } from "@/lib/useSharedStorage"
+import { loadStreamers, saveStreamers, type Streamer } from "@/lib/orderUtils"
 
 type LeadStatus =
   | "new"
@@ -168,18 +169,9 @@ function getDefaultMeetingInputs() {
   }
 }
 
-function loadStreamers() {
-  if (typeof window === "undefined") return []
-  try {
-    return JSON.parse(localStorage.getItem("streamers") || "[]")
-  } catch {
-    return []
-  }
-}
-
 function leadToStreamerForm(lead: Lead): StreamerFormData {
   const streamers = loadStreamers()
-  const existing = streamers.find((s: Lead) => matchesContact(lead, s))
+  const existing = streamers.find((s) => matchesContact(lead, s))
 
   if (existing) {
     return {
@@ -241,12 +233,9 @@ function saveStreamerFromForm(
           }
         : s
     )
-    localStorage.setItem("streamers", JSON.stringify(updated))
+    saveStreamers(updated as Streamer[])
   } else {
-    localStorage.setItem(
-      "streamers",
-      JSON.stringify([payload, ...streamers])
-    )
+    saveStreamers([payload as Streamer, ...streamers])
   }
 
   return streamerId
@@ -254,7 +243,7 @@ function saveStreamerFromForm(
 
 function findExistingStreamerId(form: StreamerFormData) {
   const streamers = loadStreamers()
-  const match = streamers.find((s: Lead) => matchesContact(form, s))
+  const match = streamers.find((s) => matchesContact(form, s))
   return match?.id as number | undefined
 }
 
@@ -265,7 +254,7 @@ function removeFromStreamers(lead: Lead) {
     (s: { id: number }) => s.id !== lead.streamerId
   )
 
-  localStorage.setItem("streamers", JSON.stringify(streamers))
+  saveStreamers(streamers)
   return true
 }
 
@@ -298,7 +287,7 @@ function parsedToLead(row: ParsedLeadRow, id: number): Lead {
 export default function CRMPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [leads, setLeads] = useHydratedStorage<Lead[]>("crm", [])
+  const [leads, setLeads] = useSharedStorage<Lead[]>("crm", [])
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -338,7 +327,7 @@ export default function CRMPage() {
     }
 
     const streamers = loadStreamers()
-    if (streamers.some((s: Lead) => matchesContact(newLeadData, s))) {
+    if (streamers.some((s) => matchesContact(newLeadData, s))) {
       alert("This person is already a Streamer.")
       return
     }
@@ -562,7 +551,7 @@ export default function CRMPage() {
               }
             : s
       )
-      localStorage.setItem("streamers", JSON.stringify(updatedStreamers))
+      saveStreamers(updatedStreamers as Streamer[])
     }
 
     setEditLeadId(null)

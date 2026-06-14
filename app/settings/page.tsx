@@ -7,13 +7,14 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from "@/components/dashboard"
+import { isCloudSyncEnabled } from "@/lib/dataStore"
 import {
-  STORAGE_KEYS,
   countBackupItems,
   downloadBackup,
   exportAllStorage,
   importAllStorage,
   parseBackupFile,
+  STORAGE_KEYS,
   type DashboardBackup,
 } from "@/lib/storageBackup"
 
@@ -92,9 +93,9 @@ export default function SettingsPage() {
           </SecondaryButton>
 
           <p className="text-zinc-600 text-xs mt-4 leading-relaxed">
-            Download a backup before clearing browser data or switching
-            computers. Data is stored per browser — localhost and your live
-            Vercel URL are separate.
+            {isCloudSyncEnabled()
+              ? "Data syncs live via Supabase — all team members see the same records."
+              : "Cloud sync is off. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to Vercel, run supabase/schema.sql, then redeploy."}
           </p>
         </div>
 

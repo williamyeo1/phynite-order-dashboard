@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
+import { useSharedStorage } from "@/lib/useSharedStorage"
 import {
   ActionButton,
   EmptyState,
@@ -17,12 +18,9 @@ import {
   formatStatusDate,
   formatStreamerAddress,
   getOrderBrandName,
-  loadOrders,
   loadProduction,
-  loadShipping,
-  loadStreamers,
   saveProduction,
-  saveShipping,
+  type Order,
   type ShippingShipment,
   type Streamer,
 } from "@/lib/orderUtils"
@@ -220,23 +218,21 @@ function ShipmentContactPanel({ details }: { details: ShipmentDetails }) {
 }
 
 export default function ShippingPage() {
-  const [shipments, setShipments] = useState<ShippingShipment[]>([])
+  const [orders] = useSharedStorage<Order[]>("orders", [])
+  const [streamers] = useSharedStorage<Streamer[]>("streamers", [])
+  const [shipments, setShipments] = useSharedStorage<ShippingShipment[]>(
+    "shipping",
+    []
+  )
   const [trackingInput, setTrackingInput] = useState<Record<number, string>>(
     {}
   )
 
   function refresh() {
-    setShipments(loadShipping())
+    // Realtime sync handles updates; kept for manual refresh button
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   const shipmentDetails = useMemo(() => {
-    const orders = loadOrders()
-    const streamers = loadStreamers()
-
     return shipments.map((shipment): ShipmentDetails => {
       const streamer = findStreamerByOrderName(shipment.streamer, streamers)
       const order = orders.find((o) => o.id === shipment.orderId)
@@ -249,10 +245,9 @@ export default function ShippingPage() {
         addressLines: streamer ? formatStreamerAddress(streamer) : [],
       }
     })
-  }, [shipments])
+  }, [shipments, orders, streamers])
 
   function saveShipments(updated: ShippingShipment[]) {
-    saveShipping(updated)
     setShipments(updated)
   }
 

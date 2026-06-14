@@ -1,3 +1,6 @@
+import { getData, setData } from "@/lib/dataStore"
+import type { StorageKey } from "@/lib/storageBackup"
+
 export type OrderLineItem = {
   type: string
   qty: number
@@ -62,6 +65,14 @@ export type Streamer = {
 
 export const BATCH_SIZE = 450
 
+function loadKey<T>(key: StorageKey, fallback: T): T {
+  return getData(key, fallback)
+}
+
+function saveKey<T>(key: StorageKey, value: T) {
+  void setData(key, value)
+}
+
 export function getOrderBrandName(streamer: string) {
   const match = streamer.match(/\(([^)]+)\)$/)
   return match ? match[1] : streamer
@@ -107,43 +118,31 @@ export function formatStatusDate(iso: string) {
 }
 
 export function loadOrders(): Order[] {
-  if (typeof window === "undefined") return []
-  try {
-    return JSON.parse(localStorage.getItem("orders") || "[]")
-  } catch {
-    return []
-  }
+  return loadKey<Order[]>("orders", [])
+}
+
+export function saveOrders(orders: Order[]) {
+  saveKey("orders", orders)
 }
 
 export function loadProduction(): ProductionRecord[] {
-  if (typeof window === "undefined") return []
-  try {
-    return JSON.parse(localStorage.getItem("production") || "[]")
-  } catch {
-    return []
-  }
+  return loadKey<ProductionRecord[]>("production", [])
 }
 
 export function saveProduction(records: ProductionRecord[]) {
-  localStorage.setItem("production", JSON.stringify(records))
+  saveKey("production", records)
 }
 
 export function loadShipping(): ShippingShipment[] {
-  if (typeof window === "undefined") return []
-  try {
-    return JSON.parse(localStorage.getItem("shipping") || "[]")
-  } catch {
-    return []
-  }
+  return loadKey<ShippingShipment[]>("shipping", [])
 }
 
 export function loadStreamers(): Streamer[] {
-  if (typeof window === "undefined") return []
-  try {
-    return JSON.parse(localStorage.getItem("streamers") || "[]")
-  } catch {
-    return []
-  }
+  return loadKey<Streamer[]>("streamers", [])
+}
+
+export function saveStreamers(streamers: Streamer[]) {
+  saveKey("streamers", streamers)
 }
 
 export function findStreamerByOrderName(
@@ -193,7 +192,7 @@ export function formatShippingType(shippingType: string) {
 }
 
 export function saveShipping(shipments: ShippingShipment[]) {
-  localStorage.setItem("shipping", JSON.stringify(shipments))
+  saveKey("shipping", shipments)
 }
 
 export function syncProductionFromOrders() {

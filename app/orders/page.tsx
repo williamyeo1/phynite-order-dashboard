@@ -10,7 +10,12 @@ import {
   PrimaryButton,
 } from "@/components/dashboard"
 import { TimePeriodFilter } from "@/components/TimePeriodFilter"
-import { useHydratedStorage } from "@/lib/useHydratedStorage"
+import { useSharedStorage } from "@/lib/useSharedStorage"
+import {
+  loadProduction,
+  loadStreamers,
+  saveProduction,
+} from "@/lib/orderUtils"
 import {
   DEFAULT_TIME_FILTER,
   isDateInTimeFilter,
@@ -58,6 +63,8 @@ function getIsoDate(dateString: string) {
 }
 
 export default function OrdersPage() {
+  const [orders, setOrders] = useSharedStorage<Order[]>("orders", [])
+
   const markPaid = (id: number) => {
     const updatedOrders = orders.map((order) =>
       order.id === id
@@ -70,34 +77,21 @@ export default function OrdersPage() {
 
     setOrders(updatedOrders)
 
-    localStorage.setItem(
-      "orders",
-      JSON.stringify(updatedOrders)
-    )
-
     const order = updatedOrders.find((o) => o.id === id)
+    const production = loadProduction()
+
     if (order?.paid) {
-      const production = JSON.parse(
-        localStorage.getItem("production") || "[]"
-      )
-      if (!production.find((p: { orderId: number }) => p.orderId === id)) {
-        localStorage.setItem(
-          "production",
-          JSON.stringify([
-            ...production,
-            { orderId: id, blackDone: 0, whiteDone: 0 },
-          ])
-        )
+      if (!production.find((p) => p.orderId === id)) {
+        saveProduction([
+          ...production,
+          { orderId: id, blackDone: 0, whiteDone: 0 },
+        ])
       }
     } else {
-      const production = JSON.parse(
-        localStorage.getItem("production") || "[]"
-      ).filter((p: { orderId: number }) => p.orderId !== id)
-      localStorage.setItem("production", JSON.stringify(production))
+      saveProduction(production.filter((p) => p.orderId !== id))
     }
   }
-  
-  const [streamers, setStreamers] = useState<any[]>([])
+  const [streamers] = useSharedStorage<any[]>("streamers", [])
   const [emailType, setEmailType] = useState("new_streamer")
   const [showPanel, setShowPanel] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -117,35 +111,6 @@ export default function OrdersPage() {
       qty: 0,
       price: 8.38,      oldModel: false,    },
   ])
-
-  // LOAD STREAMERS
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(
-        "streamers"
-      )
-
-      if (saved) {
-        const parsed = JSON.parse(saved)
-
-        if (Array.isArray(parsed)) {
-          setStreamers(parsed)
-        } else {
-          setStreamers([])
-        }
-      }
-    } catch (err) {
-      console.error(
-        "Failed loading streamers",
-        err
-      )
-
-      setStreamers([])
-    }
-  }, [])
-
-  // LOAD ORDERS
-  const [orders, setOrders] = useHydratedStorage<Order[]>("orders", [])
 
   const displayedOrders = useMemo(() => {
     return orders.filter((order) => isDateInTimeFilter(order.date, timeFilter))
@@ -386,11 +351,6 @@ if (!invoiceExists) {
 })
 
   setOrders(updatedOrders)
-
-  localStorage.setItem(
-    "orders",
-    JSON.stringify(updatedOrders)
-  )
 }
   const editOrder = (order: Order) => {
     setEditingId(order.id)

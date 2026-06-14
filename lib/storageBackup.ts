@@ -1,3 +1,5 @@
+import { getData, setData } from "@/lib/dataStore"
+
 export const STORAGE_KEYS = [
   "orders",
   "crm",
@@ -12,16 +14,9 @@ export type StorageKey = (typeof STORAGE_KEYS)[number]
 export type DashboardBackup = Partial<Record<StorageKey, unknown>>
 
 export function exportAllStorage(): DashboardBackup {
-  if (typeof window === "undefined") return {}
-
   const backup: DashboardBackup = {}
   for (const key of STORAGE_KEYS) {
-    try {
-      const raw = localStorage.getItem(key)
-      if (raw) backup[key] = JSON.parse(raw)
-    } catch {
-      backup[key] = []
-    }
+    backup[key] = getData(key, [])
   }
   return backup
 }
@@ -56,17 +51,13 @@ export function importAllStorage(
     }
 
     if (merge) {
-      try {
-        const existing = JSON.parse(localStorage.getItem(key) || "[]")
-        const merged = Array.isArray(existing)
-          ? [...existing, ...(Array.isArray(value) ? value : [])]
-          : value
-        localStorage.setItem(key, JSON.stringify(merged))
-      } catch {
-        localStorage.setItem(key, JSON.stringify(value))
-      }
+      const existing = getData<unknown[]>(key, [])
+      const merged = Array.isArray(existing)
+        ? [...existing, ...(Array.isArray(value) ? value : [])]
+        : value
+      void setData(key, merged)
     } else {
-      localStorage.setItem(key, JSON.stringify(value))
+      void setData(key, value)
     }
 
     imported.push(key)

@@ -10,7 +10,7 @@ import {
   PageHeader,
   PrimaryButton,
 } from "@/components/dashboard";
-import { useHydratedStorage } from "@/lib/useHydratedStorage";
+import { useSharedStorage } from "@/lib/useSharedStorage";
 
 type Streamer = {
   id: number;
@@ -100,7 +100,7 @@ function Input({
 }
 
 export default function StreamersPage() {
-  const [streamers, setStreamers] = useHydratedStorage<Streamer[]>("streamers", []);
+  const [streamers, setStreamers] = useSharedStorage<Streamer[]>("streamers", []);
   const [search, setSearch] = useState("");
 
   const [showModal, setShowModal] = useState(false);

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSharedStorage } from "@/lib/useSharedStorage"
 import { TimePeriodFilter } from "@/components/TimePeriodFilter"
 import {
   ActionButton,
@@ -240,26 +241,26 @@ function PackProgressBar({
 }
 
 export default function ProductionPage() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [production, setProduction] = useState<ProductionRecord[]>([])
+  const [orders] = useSharedStorage<Order[]>("orders", [])
+  const [production, setProduction] = useSharedStorage<ProductionRecord[]>(
+    "production",
+    []
+  )
   const [blackInput, setBlackInput] = useState<Record<number, string>>({})
   const [whiteInput, setWhiteInput] = useState<Record<number, string>>({})
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [filter, setFilter] = useState<FilterTab>("active")
   const [timeFilter, setTimeFilter] = useState<TimeFilter>(DEFAULT_TIME_FILTER)
 
+  useEffect(() => {
+    syncProductionFromOrders()
+  }, [orders])
+
   function refresh() {
     syncProductionFromOrders()
-    setOrders(loadOrders())
-    setProduction(loadProduction())
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   function saveProductionState(records: ProductionRecord[]) {
-    saveProduction(records)
     setProduction(records)
   }
 
