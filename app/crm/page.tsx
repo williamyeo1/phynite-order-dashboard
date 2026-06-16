@@ -18,6 +18,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from "@/components/dashboard"
+import { buildReactivationEmail } from "@/lib/crmEmailTemplate"
 import {
   analyzeTypeformImport,
   duplicateReasonLabel,
@@ -62,6 +63,7 @@ type Lead = {
   closedAt?: string
   streamerId?: number
   notes?: string
+  reactivationEmailSentAt?: string
 }
 
 const EMPTY_LEAD = {
@@ -309,6 +311,15 @@ export default function CRMPage() {
   const [streamerForm, setStreamerForm] = useState<StreamerFormData>(
     EMPTY_STREAMER_FORM
   )
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [followerMin, setFollowerMin] = useState("")
+  const [followerMax, setFollowerMax] = useState("")
+  const [sendingIds, setSendingIds] = useState<Set<number>>(new Set())
+  const [bulkProgress, setBulkProgress] = useState<{
+    current: number
+    total: number
+    label: string
+  } | null>(null)
 
   function saveLeads(updated: Lead[]) {
     setLeads(updated)
@@ -583,28 +594,170 @@ export default function CRMPage() {
   function deleteLead(id: number) {
     if (!window.confirm("Delete this lead?")) return
     saveLeads(leads.filter((l) => l.id !== id))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
   }
 
-  const periodLeads = useMemo(() => {
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllVisible(ids: number[]) {
+    setSelectedIds(new Set(ids))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function sendReactivationEmail(lead: Lead) {
+    if (!lead.email?.trim()) {
+      alert("This lead has no email address.")
+      return false
+    }
+
+    const template = buildReactivationEmail({
+      firstName: lead.firstName,
+      brandName: lead.brandName,
+    })
+
+    setSendingIds((prev) => new Set(prev).add(lead.id))
+
+    try {
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: lead.email.trim(),
+          subject: template.subject,
+          message: template.message,
+          html: template.html,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Email send failed")
+      }
+
+      const sentAt = new Date().toISOString()
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === lead.id ? { ...l, reactivationEmailSentAt: sentAt } : l
+        )
+      )
+      return true
+    } catch (err) {
+      console.error(err)
+      alert(
+        `Failed to send email to ${lead.brandName || lead.email}. Check the console for details.`
+      )
+      return false
+    } finally {
+      setSendingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(lead.id)
+        return next
+      })
+    }
+  }
+
+  async function sendBulkReactivationEmails() {
+    const targets = filtered.filter(
+      (l) => selectedIds.has(l.id) && l.email?.trim()
+    )
+    const missingEmail = filtered.filter(
+      (l) => selectedIds.has(l.id) && !l.email?.trim()
+    )
+
+    if (targets.length === 0) {
+      alert("No selected leads with email addresses.")
+      return
+    }
+
+    const alreadySent = targets.filter((l) => l.reactivationEmailSentAt)
+    let confirmMsg = `Send reactivation email to ${targets.length} lead${targets.length === 1 ? "" : "s"}?`
+    if (alreadySent.length > 0) {
+      confirmMsg += `\n\n${alreadySent.length} already received this email — they will get it again.`
+    }
+    if (missingEmail.length > 0) {
+      confirmMsg += `\n\n${missingEmail.length} selected lead${missingEmail.length === 1 ? "" : "s"} skipped (no email).`
+    }
+    if (!window.confirm(confirmMsg)) return
+
+    setBulkProgress({ current: 0, total: targets.length, label: "" })
+
+    let sent = 0
+    for (let i = 0; i < targets.length; i++) {
+      const lead = targets[i]
+      setBulkProgress({
+        current: i + 1,
+        total: targets.length,
+        label: lead.brandName || lead.email,
+      })
+      const ok = await sendReactivationEmail(lead)
+      if (ok) sent++
+      if (i < targets.length - 1) {
+        await new Promise((r) => setTimeout(r, 600))
+      }
+    }
+
+    setBulkProgress(null)
+    clearSelection()
+    alert(`Sent ${sent} of ${targets.length} emails.`)
+  }
+
+  const leadsInScope = useMemo(() => {
     if (timeFilter.preset === "all") return leads
-    return leads.filter((l) => isDateInTimeFilter(l.importedAt, timeFilter))
+    return leads.filter(
+      (l) =>
+        isDateInTimeFilter(l.importedAt, timeFilter) ||
+        STATUS_CONFIG.some((s) =>
+          isDateInTimeFilter(l[s.dateKey] as string | undefined, timeFilter)
+        )
+    )
   }, [leads, timeFilter])
 
   const metrics = useMemo(() => {
-    const totalLeads =
-      timeFilter.preset === "all" ? leads.length : periodLeads.length
+    const totalLeads = leadsInScope.length
 
-    const countInPeriod = (dateKey: keyof Lead) =>
-      leads.filter((l) => {
+    const countInPeriod = (dateKey: keyof Lead) => {
+      if (timeFilter.preset === "all") {
+        return leads.filter((l) => Boolean(l[dateKey])).length
+      }
+      return leads.filter((l) => {
         const date = l[dateKey] as string | undefined
         return isDateInTimeFilter(date, timeFilter)
       }).length
+    }
 
     const attemptedCount = countInPeriod("attemptedAt")
     const noAnswerCount = countInPeriod("noAnswerAt")
     const meetingBookedCount = countInPeriod("meetingBookedAt")
     const meetingHeldCount = countInPeriod("meetingHeldAt")
-    const closedCount = countInPeriod("closedAt")
+
+    const closedCount =
+      timeFilter.preset === "all"
+        ? leads.filter((l) => l.closedAt).length
+        : leads.filter((l) => isDateInTimeFilter(l.closedAt, timeFilter)).length
+
+    const closedFromMeetings =
+      timeFilter.preset === "all"
+        ? leads.filter((l) => l.closedAt && l.meetingHeldAt).length
+        : leads.filter(
+            (l) =>
+              l.closedAt &&
+              l.meetingHeldAt &&
+              isDateInTimeFilter(l.meetingHeldAt, timeFilter)
+          ).length
 
     const closeRate =
       totalLeads > 0
@@ -613,7 +766,7 @@ export default function CRMPage() {
 
     const closeRateFromMeetings =
       meetingHeldCount > 0
-        ? ((closedCount / meetingHeldCount) * 100).toFixed(1)
+        ? ((closedFromMeetings / meetingHeldCount) * 100).toFixed(1)
         : "—"
 
     return {
@@ -626,7 +779,7 @@ export default function CRMPage() {
       closeRate,
       closeRateFromMeetings,
     }
-  }, [leads, periodLeads, timeFilter])
+  }, [leads, leadsInScope, timeFilter])
 
   const filtered = useMemo(() => {
     const query = search.toLowerCase()
@@ -664,10 +817,32 @@ export default function CRMPage() {
       )
     }
 
+    const minFollowers = followerMin.trim()
+      ? parseFollowerToken(followerMin)
+      : null
+    const maxFollowers = followerMax.trim()
+      ? parseFollowerToken(followerMax)
+      : null
+
+    if (minFollowers !== null) {
+      result = result.filter((l) => (l.followerCount || 0) >= minFollowers)
+    }
+    if (maxFollowers !== null) {
+      result = result.filter((l) => (l.followerCount || 0) <= maxFollowers)
+    }
+
     return [...result].sort(
       (a, b) => (b.followerCount || 0) - (a.followerCount || 0)
     )
-  }, [leads, search, filterTab, timeFilter])
+  }, [leads, search, filterTab, timeFilter, followerMin, followerMax])
+
+  const visibleIds = useMemo(
+    () => filtered.map((l) => l.id),
+    [filtered]
+  )
+
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
 
   const skippedByReason = useMemo(() => {
     if (!importPreview) return null
@@ -760,13 +935,95 @@ export default function CRMPage() {
           className="mt-6"
         />
 
-        <div className="mt-8 space-y-4">
+        <div className="mt-6 flex flex-col lg:flex-row lg:items-end gap-4">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] tracking-[0.3em] text-zinc-600 block mb-2">
+                MIN FOLLOWERS
+              </label>
+              <input
+                value={followerMin}
+                onChange={(e) => setFollowerMin(e.target.value)}
+                placeholder="e.g. 10K or 10000"
+                className="w-full bg-[#070707] border border-white/10 rounded-2xl px-5 py-3 text-white text-sm outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] tracking-[0.3em] text-zinc-600 block mb-2">
+                MAX FOLLOWERS
+              </label>
+              <input
+                value={followerMax}
+                onChange={(e) => setFollowerMax(e.target.value)}
+                placeholder="e.g. 500K or 1000000"
+                className="w-full bg-[#070707] border border-white/10 rounded-2xl px-5 py-3 text-white text-sm outline-none"
+              />
+            </div>
+          </div>
+          {(followerMin || followerMax) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFollowerMin("")
+                setFollowerMax("")
+              }}
+              className="text-zinc-500 text-sm hover:text-white px-4 py-3"
+            >
+              Clear follower filter
+            </button>
+          )}
+        </div>
+
+        {selectedIds.size > 0 && (
+          <div className="mt-6 flex flex-wrap items-center gap-3 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl px-6 py-4">
+            <span className="text-cyan-400 text-sm font-semibold">
+              {selectedIds.size} selected
+            </span>
+            <PrimaryButton
+              onClick={sendBulkReactivationEmails}
+              disabled={Boolean(bulkProgress)}
+            >
+              Send reactivation email to selected
+            </PrimaryButton>
+            <SecondaryButton onClick={clearSelection}>Clear</SecondaryButton>
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={() => {
+                if (allVisibleSelected) clearSelection()
+                else selectAllVisible(visibleIds)
+              }}
+              className="w-4 h-4 rounded accent-cyan-400"
+            />
+            Select all visible ({filtered.length})
+          </label>
+          <span className="text-zinc-600 text-xs">
+            Showing {filtered.length} lead{filtered.length === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        <div className="mt-4 space-y-4">
           {filtered.length === 0 ? (
             <EmptyState>No leads match this filter.</EmptyState>
           ) : (
             filtered.map((lead) => (
               <ListCard key={lead.id}>
-                <div className="grid grid-cols-[1fr_0.8fr_0.8fr_0.7fr_1fr_1fr_auto] items-start gap-6 px-8 py-8">
+                <div className="grid grid-cols-[auto_1fr_0.8fr_0.8fr_0.7fr_1fr_1fr_auto] items-start gap-6 px-8 py-8">
+                  <div className="pt-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(lead.id)}
+                      onChange={() => toggleSelected(lead.id)}
+                      className="w-4 h-4 rounded accent-cyan-400"
+                      aria-label={`Select ${lead.brandName}`}
+                    />
+                  </div>
+
                   <div>
                     <div className="text-[10px] tracking-[0.3em] text-zinc-600 mb-2">
                       BRAND NAME
@@ -825,6 +1082,28 @@ export default function CRMPage() {
                   </div>
 
                   <div className="flex flex-col gap-2 self-start">
+                    <button
+                      onClick={() => sendReactivationEmail(lead)}
+                      disabled={
+                        !lead.email?.trim() ||
+                        sendingIds.has(lead.id) ||
+                        Boolean(bulkProgress)
+                      }
+                      className="bg-cyan-400/15 hover:bg-cyan-400/25 disabled:opacity-40 disabled:cursor-not-allowed text-cyan-400 px-5 py-3 rounded-2xl text-sm font-semibold"
+                    >
+                      {sendingIds.has(lead.id) ? "Sending…" : "Send Email"}
+                    </button>
+                    {lead.reactivationEmailSentAt && (
+                      <div className="text-[10px] text-green-400/90 leading-snug max-w-[140px]">
+                        Email sent{" "}
+                        {formatStatusDate(lead.reactivationEmailSentAt)}
+                      </div>
+                    )}
+                    {!lead.email?.trim() && (
+                      <div className="text-[10px] text-zinc-600 max-w-[140px]">
+                        No email on file
+                      </div>
+                    )}
                     <button
                       onClick={() => openEditLead(lead)}
                       className="bg-[#111] hover:bg-[#1a1a1a] text-white px-5 py-3 rounded-2xl"
@@ -1319,6 +1598,26 @@ export default function CRMPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {bulkProgress && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-[#050505] border border-white/10 rounded-[32px] p-8 text-center">
+            <h3 className="text-2xl font-black mb-2">Sending emails</h3>
+            <p className="text-zinc-400 text-sm mb-6">
+              {bulkProgress.current} of {bulkProgress.total}
+              {bulkProgress.label ? ` — ${bulkProgress.label}` : ""}
+            </p>
+            <div className="h-2 bg-[#111] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-400 transition-all duration-300"
+                style={{
+                  width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
