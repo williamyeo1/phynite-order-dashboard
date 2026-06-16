@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import nodemailer from "nodemailer"
+import { textToEmailHtml, wrapEmailHtml } from "@/lib/emailHtml"
 import { generateInvoicePdf } from "@/lib/generateInvoicePdf"
 
 const transporter = nodemailer.createTransport({
@@ -43,24 +44,14 @@ export async function POST(req: NextRequest) {
     const emailMessage = normalizeMessage(message)
     const htmlMessage = html
       ? html.trim()
-      : emailMessage
-          .split("\n\n")
-          .map(
-            (paragraph) =>
-              `<p>${paragraph.replace(/\n/g, "<br/>")}</p>`
-          )
-          .join("")
+      : textToEmailHtml(emailMessage)
 
     const info = await transporter.sendMail({
       from: `William Yeo <${process.env.GMAIL_USER}>`,
       to: email,
       subject,
       text: emailMessage,
-      html: `
-        <div style="font-family:sans-serif; line-height:1.6; color:#111;">
-          ${htmlMessage}
-        </div>
-      `,
+      html: wrapEmailHtml(htmlMessage),
       attachments: [
         {
           filename: fileName,
