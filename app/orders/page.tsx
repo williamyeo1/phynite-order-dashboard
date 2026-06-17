@@ -10,8 +10,12 @@ import {
   PrimaryButton,
 } from "@/components/dashboard"
 import { TimePeriodFilter } from "@/components/TimePeriodFilter"
+import { StreamerDetailsExpand } from "@/components/StreamerDetailsExpand"
+import { todayIsoDate, toIsoDateString } from "@/lib/dateUtils"
 import { useSharedStorage } from "@/lib/useSharedStorage"
 import {
+  findStreamerByOrderName,
+  formatOrderDate,
   loadProduction,
   loadStreamers,
   saveProduction,
@@ -48,19 +52,6 @@ type Order = {
   emailType?: string
   email?: string
 }
-function formatOrderDate(dateString: string) {
-  const date = new Date(dateString)
-  return isNaN(date.getTime())
-    ? dateString
-    : date.toLocaleDateString()
-}
-
-function getIsoDate(dateString: string) {
-  const date = new Date(dateString)
-  return isNaN(date.getTime())
-    ? new Date().toISOString().slice(0, 10)
-    : date.toISOString().slice(0, 10)
-}
 
 export default function OrdersPage() {
   const [orders, setOrders] = useSharedStorage<Order[]>("orders", [])
@@ -95,11 +86,10 @@ export default function OrdersPage() {
   const [emailType, setEmailType] = useState("new_streamer")
   const [showPanel, setShowPanel] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null)
 
   const [streamer, setStreamer] = useState("")
-  const [orderDate, setOrderDate] = useState(
-    new Date().toISOString().slice(0, 10)
-  )
+  const [orderDate, setOrderDate] = useState(todayIsoDate())
   const [shipping, setShipping] = useState(0)
   const [scanner, setScanner] = useState(false)
   const [credit, setCredit] = useState(0)
@@ -118,7 +108,7 @@ export default function OrdersPage() {
 
   const resetForm = () => {
     setStreamer("")
-    setOrderDate(new Date().toISOString().slice(0, 10))
+    setOrderDate(todayIsoDate())
     setShipping(0)
     setScanner(false)
     setCredit(0)
@@ -355,7 +345,7 @@ if (!invoiceExists) {
   const editOrder = (order: Order) => {
     setEditingId(order.id)
     setStreamer(getOrderBrandName(order.streamer))
-    setOrderDate(getIsoDate(order.date))
+    setOrderDate(toIsoDateString(order.date))
     setShipping(order.shipping)
     setScanner(order.scanner)
     setCredit(order.credit || 0)
@@ -653,14 +643,32 @@ William Yeo
               item.oldModel
           )
 
+        const streamerRecord = findStreamerByOrderName(
+          order.streamer,
+          streamers
+        )
+
         return (
           <ListCard key={order.id}>
             <div className="grid grid-cols-[1.5fr_repeat(4,minmax(0,0.75fr))_minmax(300px,1.1fr)] items-center gap-x-5 px-6 py-3.5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg font-semibold leading-tight truncate">
-                    {getOrderBrandName(order.streamer)}
-                  </h2>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedOrderId(
+                        expandedOrderId === order.id ? null : order.id
+                      )
+                    }
+                    className="flex items-center gap-1.5 min-w-0 text-left group"
+                  >
+                    <h2 className="text-lg font-semibold leading-tight truncate group-hover:text-cyan-400 transition">
+                      {getOrderBrandName(order.streamer)}
+                    </h2>
+                    <span className="text-zinc-600 text-sm shrink-0 group-hover:text-zinc-400">
+                      {expandedOrderId === order.id ? "−" : "+"}
+                    </span>
+                  </button>
                   <span
                     className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
                       order.paid
@@ -750,6 +758,16 @@ William Yeo
                 </select>
               </div>
             </div>
+
+            {expandedOrderId === order.id &&
+              (streamerRecord ? (
+                <StreamerDetailsExpand streamer={streamerRecord} />
+              ) : (
+                <div className="border-t border-white/10 px-6 py-6 text-zinc-500 text-sm">
+                  No streamer profile found. Add them on the Streamers page to
+                  see contact and shipping details here.
+                </div>
+              ))}
           </ListCard>
         )
       })

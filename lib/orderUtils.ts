@@ -1,4 +1,5 @@
 import { getData, setData } from "@/lib/dataStore"
+import { formatLocalDate, parseLocalDate } from "@/lib/dateUtils"
 import type { StorageKey } from "@/lib/storageBackup"
 
 export type OrderLineItem = {
@@ -94,8 +95,8 @@ export function getBlackWhiteTotals(order: Order) {
 }
 
 export function getDaysInQueue(dateString: string) {
-  const created = new Date(dateString)
-  if (isNaN(created.getTime())) return 0
+  const created = parseLocalDate(dateString)
+  if (!created) return 0
 
   const now = new Date()
   const diff = now.getTime() - created.getTime()
@@ -103,10 +104,7 @@ export function getDaysInQueue(dateString: string) {
 }
 
 export function formatOrderDate(dateString: string) {
-  const date = new Date(dateString)
-  return isNaN(date.getTime())
-    ? dateString
-    : date.toLocaleDateString()
+  return formatLocalDate(dateString)
 }
 
 export function formatStatusDate(iso: string) {

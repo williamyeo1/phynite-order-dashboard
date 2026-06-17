@@ -1,3 +1,5 @@
+import { parseLocalDate } from "@/lib/dateUtils"
+
 export type TimePeriodPreset = "all" | "week" | "month" | "custom"
 
 export type TimeFilter = {
@@ -9,9 +11,7 @@ export type TimeFilter = {
 export const DEFAULT_TIME_FILTER: TimeFilter = { preset: "all" }
 
 function parseDate(value: string | undefined): Date | null {
-  if (!value) return null
-  const date = new Date(value)
-  return isNaN(date.getTime()) ? null : date
+  return parseLocalDate(value)
 }
 
 function startOfDay(date: Date) {
