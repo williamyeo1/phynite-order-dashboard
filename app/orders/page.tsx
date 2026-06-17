@@ -57,30 +57,32 @@ export default function OrdersPage() {
   const [orders, setOrders] = useSharedStorage<Order[]>("orders", [])
 
   const markPaid = (id: number) => {
-    const updatedOrders = orders.map((order) =>
-      order.id === id
-        ? {
-            ...order,
-            paid: !order.paid,
-          }
-        : order
-    )
+    setOrders((prev) => {
+      const updatedOrders = prev.map((order) =>
+        order.id === id
+          ? {
+              ...order,
+              paid: !order.paid,
+            }
+          : order
+      )
 
-    setOrders(updatedOrders)
+      const order = updatedOrders.find((o) => o.id === id)
+      const production = loadProduction()
 
-    const order = updatedOrders.find((o) => o.id === id)
-    const production = loadProduction()
-
-    if (order?.paid) {
-      if (!production.find((p) => p.orderId === id)) {
-        saveProduction([
-          ...production,
-          { orderId: id, blackDone: 0, whiteDone: 0 },
-        ])
+      if (order?.paid) {
+        if (!production.find((p) => p.orderId === id)) {
+          saveProduction([
+            ...production,
+            { orderId: id, blackDone: 0, whiteDone: 0 },
+          ])
+        }
+      } else {
+        saveProduction(production.filter((p) => p.orderId !== id))
       }
-    } else {
-      saveProduction(production.filter((p) => p.orderId !== id))
-    }
+
+      return updatedOrders
+    })
   }
   const [streamers] = useSharedStorage<any[]>("streamers", [])
   const [emailType, setEmailType] = useState("new_streamer")
@@ -162,74 +164,68 @@ export default function OrdersPage() {
   const createOrUpdateOrder = () => {
     if (!streamer) return
 
-    const existingOrder = editingId
-      ? orders.find((o) => o.id === editingId)
-      : undefined
+    const orderId = editingId || Date.now()
 
-    const newOrder = {
-      id: editingId || Date.now(),
-      streamer,
-      date: orderDate,
-      products: lineItems,
-      shipping,
-      scanner,
-      credit,
-      paid: existingOrder?.paid || false,
-      emailType: existingOrder?.emailType || emailType,
-    }
+    setOrders((prev) => {
+      const existingOrder = editingId
+        ? prev.find((o) => o.id === editingId)
+        : undefined
 
-    if (editingId) {
-      setOrders(
-        orders.map((o) =>
-          o.id === editingId ? newOrder : o
-        )
+      const newOrder = {
+        id: orderId,
+        streamer,
+        date: orderDate,
+        products: lineItems,
+        shipping,
+        scanner,
+        credit,
+        paid: existingOrder?.paid || false,
+        emailType: existingOrder?.emailType || emailType,
+      }
+
+      if (editingId) {
+        return prev.map((o) => (o.id === editingId ? newOrder : o))
+      }
+
+      return [newOrder, ...prev]
+    })
+
+    const existingInvoices = JSON.parse(
+      localStorage.getItem("invoices") || "[]"
+    )
+
+    const invoiceExists = existingInvoices.find(
+      (inv: any) => inv.orderId === orderId
+    )
+
+    if (!invoiceExists) {
+      const productTotal = lineItems.reduce(
+        (sum: number, item: any) => sum + item.qty * item.price,
+        0
       )
-    } else {
-      setOrders([newOrder, ...orders])
+
+      const total =
+        productTotal + shipping + (scanner ? 50 : 0) - (credit || 0)
+
+      const newInvoice = {
+        id: Date.now(),
+        invoiceNumber: `INV-${Date.now()}`,
+        orderId,
+        streamer,
+        products: lineItems,
+        shipping,
+        credit: credit || 0,
+        total,
+        status: "unpaid",
+        emailType: "new_streamer",
+        createdAt: new Date().toISOString(),
+      }
+
+      localStorage.setItem(
+        "invoices",
+        JSON.stringify([newInvoice, ...existingInvoices])
+      )
     }
-const existingInvoices = JSON.parse(
-  localStorage.getItem("invoices") || "[]"
-)
-
-const invoiceExists = existingInvoices.find(
-  (inv: any) => inv.orderId === newOrder.id
-)
-
-if (!invoiceExists) {
-  const productTotal = newOrder.products.reduce(
-    (sum: number, item: any) =>
-      sum + item.qty * item.price,
-    0
-  )
-
-  const total =
-    productTotal +
-    newOrder.shipping +
-    (newOrder.scanner ? 50 : 0) -
-    (newOrder.credit || 0)
-
-  const newInvoice = {
-    id: Date.now(),
-    invoiceNumber: `INV-${Date.now()}`,
-    orderId: newOrder.id,
-    streamer: newOrder.streamer,
-    products: newOrder.products,
-    shipping: newOrder.shipping,
-    credit: newOrder.credit || 0,
-    total,
-    status: "unpaid",
-    emailType: "new_streamer",
-    createdAt: new Date().toISOString(),
-  }
-
-  localStorage.setItem(
-    "invoices",
-    JSON.stringify([
-      newInvoice,
-      ...existingInvoices,
-    ])
-  )
-}
 
     closePanel()
   }
@@ -241,9 +237,7 @@ if (!invoiceExists) {
 
     if (!confirmDelete) return
 
-    setOrders(
-      orders.filter((order) => order.id !== id)
-    )
+    setOrders((prev) => prev.filter((order) => order.id !== id))
   }
 
   const deleteOrderFromPanel = (id: number | null) => {
@@ -255,9 +249,7 @@ if (!invoiceExists) {
 
     if (!confirmDelete) return
 
-    setOrders(
-      orders.filter((order) => order.id !== id)
-    )
+    setOrders((prev) => prev.filter((order) => order.id !== id))
 
     closePanel()
   }
@@ -331,16 +323,16 @@ if (!invoiceExists) {
   id: number,
   value: string
 ) => {
- const updatedOrders = orders.map((order) => {
-  return order.id === id
-    ? {
-        ...order,
-        emailType: value,
-      }
-    : order
-})
-
-  setOrders(updatedOrders)
+ setOrders((prev) =>
+  prev.map((order) =>
+    order.id === id
+      ? {
+          ...order,
+          emailType: value,
+        }
+      : order
+  )
+)
 }
   const editOrder = (order: Order) => {
     setEditingId(order.id)
@@ -592,8 +584,20 @@ William Yeo
         </MetricsGrid>
 
         <div className="space-y-3">
+          {timeFilter.preset !== "all" && orders.length > displayedOrders.length && (
+            <div className="text-zinc-500 text-sm">
+              Showing {displayedOrders.length} of {orders.length} orders for this
+              time frame. Switch to <strong className="text-zinc-400">All Time</strong> to
+              see every order.
+            </div>
+          )}
+
           {displayedOrders.length === 0 ? (
-            <EmptyState>No orders for this time frame.</EmptyState>
+            <EmptyState>
+              {orders.length === 0
+                ? "No orders yet."
+                : "No orders for this time frame. Try All Time to see all orders."}
+            </EmptyState>
           ) : (
             displayedOrders.map((order: any) => {
 
