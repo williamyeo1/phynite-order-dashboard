@@ -16,6 +16,8 @@ import { useSharedStorage } from "@/lib/useSharedStorage"
 import {
   findStreamerByOrderName,
   formatOrderDate,
+  getOrderBrandName,
+  getOrderStreamerDisplay,
   loadProduction,
   loadStreamers,
   saveProduction,
@@ -651,6 +653,10 @@ William Yeo
           order.streamer,
           streamers
         )
+        const { brand: displayBrand, personName } = getOrderStreamerDisplay(
+          order.streamer,
+          streamers
+        )
 
         return (
           <ListCard key={order.id}>
@@ -667,7 +673,12 @@ William Yeo
                     className="flex items-center gap-1.5 min-w-0 text-left group"
                   >
                     <h2 className="text-lg font-semibold leading-tight truncate group-hover:text-cyan-400 transition">
-                      {getOrderBrandName(order.streamer)}
+                      <span>{displayBrand}</span>
+                      {personName ? (
+                        <span className="text-zinc-400 font-normal ml-2">
+                          {personName}
+                        </span>
+                      ) : null}
                     </h2>
                     <span className="text-zinc-600 text-sm shrink-0 group-hover:text-zinc-400">
                       {expandedOrderId === order.id ? "−" : "+"}

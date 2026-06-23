@@ -79,6 +79,25 @@ export function getOrderBrandName(streamer: string) {
   return match ? match[1] : streamer
 }
 
+export function getOrderPersonName(streamerName: string) {
+  const match = streamerName.match(/^(.+?)\s+\([^)]+\)$/)
+  return match ? match[1].trim() : ""
+}
+
+export function getOrderStreamerDisplay(
+  streamerName: string,
+  streamers: Streamer[] = loadStreamers()
+) {
+  const brand = getOrderBrandName(streamerName)
+  const record = findStreamerByOrderName(streamerName, streamers)
+  const fromRecord = record
+    ? [record.firstName, record.lastName].filter(Boolean).join(" ")
+    : ""
+  const personName = fromRecord || getOrderPersonName(streamerName)
+
+  return { brand, personName }
+}
+
 export function getBlackWhiteTotals(order: Order) {
   const blackTotal = order.products
     .filter((p) => p.type.includes("Black") && !p.type.includes("Deposit"))
