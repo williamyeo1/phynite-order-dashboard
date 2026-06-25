@@ -84,7 +84,7 @@ export default function OrdersPage() {
       }
 
       return updatedOrders
-    })
+    }, { flushImmediately: true })
   }
   const [streamers] = useSharedStorage<any[]>("streamers", [])
   const [emailType, setEmailType] = useState("new_streamer")
@@ -190,7 +190,7 @@ export default function OrdersPage() {
       }
 
       return [newOrder, ...prev]
-    })
+    }, { flushImmediately: true })
 
     const existingInvoices = JSON.parse(
       localStorage.getItem("invoices") || "[]"
@@ -232,6 +232,13 @@ export default function OrdersPage() {
     closePanel()
   }
 
+  const removeOrder = (id: number) => {
+    setOrders((prev) => prev.filter((order) => order.id !== id), {
+      flushImmediately: true,
+    })
+    saveProduction(loadProduction().filter((p) => p.orderId !== id))
+  }
+
   const deleteOrder = (id: number) => {
     const confirmDelete = confirm(
       "Delete this order?"
@@ -239,7 +246,7 @@ export default function OrdersPage() {
 
     if (!confirmDelete) return
 
-    setOrders((prev) => prev.filter((order) => order.id !== id))
+    removeOrder(id)
   }
 
   const deleteOrderFromPanel = (id: number | null) => {
@@ -251,7 +258,7 @@ export default function OrdersPage() {
 
     if (!confirmDelete) return
 
-    setOrders((prev) => prev.filter((order) => order.id !== id))
+    removeOrder(id)
 
     closePanel()
   }
@@ -325,15 +332,17 @@ export default function OrdersPage() {
   id: number,
   value: string
 ) => {
- setOrders((prev) =>
-  prev.map((order) =>
-    order.id === id
-      ? {
-          ...order,
-          emailType: value,
-        }
-      : order
-  )
+ setOrders(
+  (prev) =>
+    prev.map((order) =>
+      order.id === id
+        ? {
+            ...order,
+            emailType: value,
+          }
+        : order
+    ),
+  { flushImmediately: true }
 )
 }
   const editOrder = (order: Order) => {

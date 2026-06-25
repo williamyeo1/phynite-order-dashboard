@@ -2,9 +2,16 @@ import { STORAGE_KEYS, type StorageKey } from "@/lib/storageBackup"
 import { isSupabaseConfigured, supabase } from "@/lib/supabase"
 
 type Listener = () => void
-type MergeableRecord = Record<string, unknown> & { id?: number; orderId?: number }
+
+type RemoteRow = {
+  data: unknown
+  updatedAt: string
+}
+
+const META_STORAGE_KEY = "dashboard_storage_meta"
 
 const cache: Partial<Record<StorageKey, unknown>> = {}
+const keyUpdatedAt: Partial<Record<StorageKey, string>> = {}
 const listeners = new Set<Listener>()
 const pendingSaves = new Map<StorageKey, ReturnType<typeof setTimeout>>()
 const savingKeys = new Set<StorageKey>()
@@ -12,6 +19,7 @@ const savingKeys = new Set<StorageKey>()
 let initPromise: Promise<void> | null = null
 let initialized = false
 let usingCloud = false
+let lifecycleHooksInstalled = false
 
 function notify() {
   listeners.forEach((listener) => listener())
@@ -32,58 +40,62 @@ function writeLocal(key: StorageKey, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
-function getMergeId(key: StorageKey, item: MergeableRecord) {
-  if (key === "production") {
-    return typeof item.orderId === "number" ? item.orderId : null
+function readMeta(): Partial<Record<StorageKey, string>> {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(META_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<Record<StorageKey, string>>) : {}
+  } catch {
+    return {}
   }
-  return typeof item.id === "number" ? item.id : null
 }
 
-/** Union-merge arrays by id so stale syncs cannot drop records. */
-export function mergeStorageData(
-  key: StorageKey,
-  local: unknown,
-  remote: unknown
-): unknown {
-  if (!Array.isArray(local) || !Array.isArray(remote)) {
-    return remote ?? local
-  }
+function writeMeta() {
+  if (typeof window === "undefined") return
+  localStorage.setItem(META_STORAGE_KEY, JSON.stringify(keyUpdatedAt))
+}
 
-  const map = new Map<number, MergeableRecord>()
-
-  for (const item of local) {
-    const mergeId = getMergeId(key, item as MergeableRecord)
-    if (mergeId != null) map.set(mergeId, item as MergeableRecord)
-  }
-
-  for (const item of remote) {
-    const mergeId = getMergeId(key, item as MergeableRecord)
-    if (mergeId != null) map.set(mergeId, item as MergeableRecord)
-  }
-
-  const merged = Array.from(map.values())
-
-  if (key !== "production") {
-    merged.sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
-  }
-
-  return merged
+function touchKey(key: StorageKey, updatedAt = new Date().toISOString()) {
+  keyUpdatedAt[key] = updatedAt
+  writeMeta()
+  return updatedAt
 }
 
 function hasPendingLocalChanges(key: StorageKey) {
   return pendingSaves.has(key) || savingKeys.has(key)
 }
 
-function applyRemoteData(key: StorageKey, remote: unknown) {
-  const local = cache[key]
-  const merged =
-    local !== undefined
-      ? mergeStorageData(key, local, remote)
-      : remote
+function isRemoteNewer(key: StorageKey, remoteUpdatedAt: string) {
+  const localUpdatedAt = keyUpdatedAt[key]
+  if (!localUpdatedAt) return true
+  return new Date(remoteUpdatedAt) > new Date(localUpdatedAt)
+}
 
-  cache[key] = merged
-  writeLocal(key, merged)
+function applyRemoteSnapshot(
+  key: StorageKey,
+  data: unknown,
+  remoteUpdatedAt: string
+) {
+  cache[key] = data
+  writeLocal(key, data)
+  keyUpdatedAt[key] = remoteUpdatedAt
+  writeMeta()
   notify()
+}
+
+function installLifecycleHooks() {
+  if (lifecycleHooksInstalled || typeof window === "undefined") return
+  lifecycleHooksInstalled = true
+
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      void flushAllPendingSaves()
+    }
+  })
+
+  window.addEventListener("pagehide", () => {
+    void flushAllPendingSaves()
+  })
 }
 
 export function isCloudSyncEnabled() {
@@ -108,13 +120,14 @@ async function flushKey(key: StorageKey) {
   const latest = cache[key]
   if (latest === undefined) return
 
+  const updatedAt = keyUpdatedAt[key] ?? new Date().toISOString()
   savingKeys.add(key)
 
   const { error } = await supabase.from("dashboard_storage").upsert(
     {
       key,
       data: latest,
-      updated_at: new Date().toISOString(),
+      updated_at: updatedAt,
     },
     { onConflict: "key" }
   )
@@ -126,7 +139,22 @@ async function flushKey(key: StorageKey) {
   }
 }
 
-export async function setData<T>(key: StorageKey, value: T) {
+export async function flushAllPendingSaves() {
+  const keys = [...pendingSaves.keys()]
+  for (const key of keys) {
+    const timer = pendingSaves.get(key)
+    if (timer) clearTimeout(timer)
+    pendingSaves.delete(key)
+    await flushKey(key)
+  }
+}
+
+export async function setData<T>(
+  key: StorageKey,
+  value: T,
+  options?: { flushImmediately?: boolean }
+) {
+  touchKey(key)
   cache[key] = value
   writeLocal(key, value)
   notify()
@@ -135,6 +163,12 @@ export async function setData<T>(key: StorageKey, value: T) {
 
   if (pendingSaves.has(key)) {
     clearTimeout(pendingSaves.get(key)!)
+    pendingSaves.delete(key)
+  }
+
+  if (options?.flushImmediately) {
+    await flushKey(key)
+    return
   }
 
   pendingSaves.set(
@@ -142,16 +176,16 @@ export async function setData<T>(key: StorageKey, value: T) {
     setTimeout(async () => {
       pendingSaves.delete(key)
       await flushKey(key)
-    }, 400)
+    }, 250)
   )
 }
 
-async function fetchRemoteKey(key: StorageKey) {
+async function fetchRemoteKey(key: StorageKey): Promise<RemoteRow | null> {
   if (!supabase) return null
 
   const { data, error } = await supabase
     .from("dashboard_storage")
-    .select("data")
+    .select("data, updated_at")
     .eq("key", key)
     .maybeSingle()
 
@@ -159,7 +193,12 @@ async function fetchRemoteKey(key: StorageKey) {
     throw new Error(error.message)
   }
 
-  return data?.data ?? null
+  if (!data) return null
+
+  return {
+    data: data.data,
+    updatedAt: data.updated_at as string,
+  }
 }
 
 async function uploadKey(key: StorageKey, value: unknown) {
@@ -176,11 +215,16 @@ function setupRealtime() {
       "postgres_changes",
       { event: "*", schema: "public", table: "dashboard_storage" },
       (payload) => {
-        const row = payload.new as { key?: StorageKey; data?: unknown }
-        if (!row?.key) return
+        const row = payload.new as {
+          key?: StorageKey
+          data?: unknown
+          updated_at?: string
+        }
+        if (!row?.key || !row.updated_at) return
         if (hasPendingLocalChanges(row.key)) return
+        if (!isRemoteNewer(row.key, row.updated_at)) return
 
-        applyRemoteData(row.key, row.data)
+        applyRemoteSnapshot(row.key, row.data, row.updated_at)
       }
     )
     .subscribe()
@@ -191,6 +235,9 @@ export async function initDataStore() {
   if (initPromise) return initPromise
 
   initPromise = (async () => {
+    Object.assign(keyUpdatedAt, readMeta())
+    installLifecycleHooks()
+
     usingCloud = isSupabaseConfigured() && Boolean(supabase)
 
     if (!usingCloud) {
@@ -208,30 +255,34 @@ export async function initDataStore() {
         const remote = await fetchRemoteKey(key)
 
         if (remote === null) {
-          if (Array.isArray(local) && local.length > 0) {
-            cache[key] = local
-            await uploadKey(key, local)
-          } else {
-            cache[key] = []
-            await uploadKey(key, [])
-          }
+          cache[key] = local
+          writeLocal(key, local)
+          touchKey(key)
+          await uploadKey(key, local)
           continue
         }
 
-        if (Array.isArray(local) && Array.isArray(remote) && local.length > 0) {
-          const merged = mergeStorageData(key, local, remote)
-          cache[key] = merged
-          writeLocal(key, merged)
+        const localUpdatedAt = keyUpdatedAt[key]
+        const remoteUpdatedAt = remote.updatedAt
 
-          const remoteJson = JSON.stringify(remote)
-          const mergedJson = JSON.stringify(merged)
-          if (mergedJson !== remoteJson) {
-            await uploadKey(key, merged)
-          }
-        } else {
-          cache[key] = remote
-          writeLocal(key, remote)
+        if (!localUpdatedAt) {
+          applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
+          continue
         }
+
+        if (new Date(remoteUpdatedAt) > new Date(localUpdatedAt)) {
+          applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
+          continue
+        }
+
+        if (new Date(localUpdatedAt) > new Date(remoteUpdatedAt)) {
+          cache[key] = local
+          writeLocal(key, local)
+          await uploadKey(key, local)
+          continue
+        }
+
+        applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
       }
 
       setupRealtime()

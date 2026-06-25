@@ -31,11 +31,14 @@ export function useSharedStorage<T>(key: StorageKey, fallback: T) {
     })
   }, [key])
 
-  function update(next: T | ((prev: T) => T)) {
+  function update(
+    next: T | ((prev: T) => T),
+    options?: { flushImmediately?: boolean }
+  ) {
     setValue((prev) => {
       const resolved =
         typeof next === "function" ? (next as (p: T) => T)(prev) : next
-      void setData(key, resolved)
+      void setData(key, resolved, options)
       return resolved
     })
   }
