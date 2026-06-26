@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   DashboardInput,
   EmptyState,
+  FilterTabs,
   ListCard,
   MetricCard,
   MetricsGrid,
@@ -11,6 +12,14 @@ import {
   PrimaryButton,
 } from "@/components/dashboard";
 import { useSharedStorage } from "@/lib/useSharedStorage";
+import {
+  matchesPartnerFilter,
+  matchesRegionFilter,
+  PARTNER_FILTER_TABS,
+  REGION_FILTER_TABS,
+  type PartnerFilter,
+  type RegionFilter,
+} from "@/lib/streamerFilters";
 
 type Streamer = {
   id: number;
@@ -102,6 +111,8 @@ function Input({
 export default function StreamersPage() {
   const [streamers, setStreamers] = useSharedStorage<Streamer[]>("streamers", []);
   const [search, setSearch] = useState("");
+  const [partnerFilter, setPartnerFilter] = useState<PartnerFilter>("all");
+  const [regionFilter, setRegionFilter] = useState<RegionFilter>("all");
 
   const [showModal, setShowModal] = useState(false);
 
@@ -196,8 +207,13 @@ export default function StreamersPage() {
   }
 
   const filtered = useMemo(() => {
+    const query = search.toLowerCase().trim();
+
     return streamers.filter((s) => {
-      const query = search.toLowerCase();
+      if (!matchesPartnerFilter(s, partnerFilter)) return false
+      if (!matchesRegionFilter(s, regionFilter)) return false
+
+      if (!query) return true
 
       return (
         s.brandName.toLowerCase().includes(query) ||
@@ -207,7 +223,7 @@ export default function StreamersPage() {
         s.phone.toLowerCase().includes(query)
       );
     });
-  }, [streamers, search]);
+  }, [streamers, search, partnerFilter, regionFilter]);
 
   const partneredCount = streamers.filter(
     (s) => s.partnered
@@ -233,6 +249,19 @@ export default function StreamersPage() {
           />
         </div>
 
+        <div className="mt-6 space-y-4">
+          <FilterTabs
+            tabs={PARTNER_FILTER_TABS}
+            active={partnerFilter}
+            onChange={setPartnerFilter}
+          />
+          <FilterTabs
+            tabs={REGION_FILTER_TABS}
+            active={regionFilter}
+            onChange={setRegionFilter}
+          />
+        </div>
+
         <MetricsGrid columns={3} className="mt-8">
           {[
             ["TOTAL STREAMERS", streamers.length, "text-white"],
@@ -249,8 +278,17 @@ export default function StreamersPage() {
         </MetricsGrid>
 
         <div className="mt-8 space-y-4">
+          {(partnerFilter !== "all" ||
+            regionFilter !== "all" ||
+            search.trim()) &&
+            filtered.length < streamers.length && (
+              <div className="text-zinc-500 text-sm">
+                Showing {filtered.length} of {streamers.length} streamers.
+              </div>
+            )}
+
           {filtered.length === 0 ? (
-            <EmptyState>No streamers match your search.</EmptyState>
+            <EmptyState>No streamers match your search or filters.</EmptyState>
           ) : (
             filtered.map((streamer) => (
               <ListCard key={streamer.id}>

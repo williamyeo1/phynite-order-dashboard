@@ -3,15 +3,17 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   EmptyState,
+  FilterTabs,
   ListCard,
   MetricCard,
   MetricsGrid,
   PageHeader,
   PrimaryButton,
+  DashboardInput,
 } from "@/components/dashboard"
 import { TimePeriodFilter } from "@/components/TimePeriodFilter"
 import { StreamerDetailsExpand } from "@/components/StreamerDetailsExpand"
-import { todayIsoDate, toIsoDateString } from "@/lib/dateUtils"
+import { parseLocalDate, todayIsoDate, toIsoDateString } from "@/lib/dateUtils"
 import { useSharedStorage } from "@/lib/useSharedStorage"
 import {
   findStreamerByOrderName,
@@ -21,12 +23,21 @@ import {
   loadProduction,
   loadStreamers,
   saveProduction,
+  type Streamer,
 } from "@/lib/orderUtils"
 import {
   DEFAULT_TIME_FILTER,
   isDateInTimeFilter,
   type TimeFilter,
 } from "@/lib/timeFilter"
+import {
+  matchesPartnerFilter,
+  matchesRegionFilter,
+  PARTNER_FILTER_TABS,
+  REGION_FILTER_TABS,
+  type PartnerFilter,
+  type RegionFilter,
+} from "@/lib/streamerFilters"
 
 const PACK_PRICES = {
   "Singles Pack - Black Edition": 8.38,
@@ -98,6 +109,9 @@ export default function OrdersPage() {
   const [scanner, setScanner] = useState(false)
   const [credit, setCredit] = useState(0)
   const [timeFilter, setTimeFilter] = useState<TimeFilter>(DEFAULT_TIME_FILTER)
+  const [search, setSearch] = useState("")
+  const [partnerFilter, setPartnerFilter] = useState<PartnerFilter>("all")
+  const [regionFilter, setRegionFilter] = useState<RegionFilter>("all")
 
   const [lineItems, setLineItems] = useState<LineItem[]>([
     {
@@ -107,8 +121,46 @@ export default function OrdersPage() {
   ])
 
   const displayedOrders = useMemo(() => {
-    return orders.filter((order) => isDateInTimeFilter(order.date, timeFilter))
-  }, [orders, timeFilter])
+    const query = search.toLowerCase().trim()
+
+    let result = orders.filter((order) =>
+      isDateInTimeFilter(order.date, timeFilter)
+    )
+
+    if (query) {
+      result = result.filter((order) => {
+        const { brand, personName } = getOrderStreamerDisplay(
+          order.streamer,
+          streamers as Streamer[]
+        )
+        return (
+          brand.toLowerCase().includes(query) ||
+          personName.toLowerCase().includes(query) ||
+          order.streamer.toLowerCase().includes(query)
+        )
+      })
+    }
+
+    if (partnerFilter !== "all" || regionFilter !== "all") {
+      result = result.filter((order) => {
+        const record = findStreamerByOrderName(
+          order.streamer,
+          streamers as Streamer[]
+        )
+        if (!record) return false
+        if (!matchesPartnerFilter(record, partnerFilter)) return false
+        if (!matchesRegionFilter(record, regionFilter)) return false
+        return true
+      })
+    }
+
+    return [...result].sort((a, b) => {
+      const dateA = parseLocalDate(a.date)?.getTime() ?? 0
+      const dateB = parseLocalDate(b.date)?.getTime() ?? 0
+      if (dateB !== dateA) return dateB - dateA
+      return b.id - a.id
+    })
+  }, [orders, timeFilter, search, partnerFilter, regionFilter, streamers])
 
   const resetForm = () => {
     setStreamer("")
@@ -556,6 +608,27 @@ William Yeo
           <TimePeriodFilter value={timeFilter} onChange={setTimeFilter} />
         </div>
 
+        <div className="mt-6">
+          <DashboardInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search Brand Name or Streamer Name"
+          />
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <FilterTabs
+            tabs={PARTNER_FILTER_TABS}
+            active={partnerFilter}
+            onChange={setPartnerFilter}
+          />
+          <FilterTabs
+            tabs={REGION_FILTER_TABS}
+            active={regionFilter}
+            onChange={setRegionFilter}
+          />
+        </div>
+
         <MetricsGrid columns={7} className="mt-6 mb-8">
           <MetricCard
             label="TOTAL ORDERS"
@@ -603,11 +676,23 @@ William Yeo
             </div>
           )}
 
+          {(partnerFilter !== "all" ||
+            regionFilter !== "all" ||
+            search.trim()) &&
+            displayedOrders.length <
+              orders.filter((o) => isDateInTimeFilter(o.date, timeFilter))
+                .length && (
+              <div className="text-zinc-500 text-sm">
+                Showing {displayedOrders.length} matching order
+                {displayedOrders.length === 1 ? "" : "s"}.
+              </div>
+            )}
+
           {displayedOrders.length === 0 ? (
             <EmptyState>
               {orders.length === 0
                 ? "No orders yet."
-                : "No orders for this time frame. Try All Time to see all orders."}
+                : "No orders match your search or filters."}
             </EmptyState>
           ) : (
             displayedOrders.map((order: any) => {
