@@ -44,6 +44,7 @@ const PACK_PRICES = {
   "Singles Pack - White Edition": 21.97,
   "Singles Pack - Black Edition (Deposit)": 8.38,
   "Singles Pack - White Edition (Deposit)": 21.97,
+  "Booster Pack Repack": 8.38,
 }
 
 type LineItem = {
