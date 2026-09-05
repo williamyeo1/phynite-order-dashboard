@@ -63,6 +63,7 @@ type Order = {
   scanner: boolean
   credit?: number
   paid?: boolean
+  paidAt?: string
   emailType?: string
   email?: string
 }
@@ -72,14 +73,15 @@ export default function OrdersPage() {
 
   const markPaid = (id: number) => {
     setOrders((prev) => {
-      const updatedOrders = prev.map((order) =>
-        order.id === id
-          ? {
-              ...order,
-              paid: !order.paid,
-            }
-          : order
-      )
+      const updatedOrders = prev.map((order) => {
+        if (order.id !== id) return order
+        const nextPaid = !order.paid
+        return {
+          ...order,
+          paid: nextPaid,
+          paidAt: nextPaid ? new Date().toISOString() : undefined,
+        }
+      })
 
       const order = updatedOrders.find((o) => o.id === id)
       const production = loadProduction()

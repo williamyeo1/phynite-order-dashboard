@@ -18,6 +18,7 @@ export type Order = {
   scanner: boolean
   credit?: number
   paid?: boolean
+  paidAt?: string
   emailType?: string
   email?: string
 }
