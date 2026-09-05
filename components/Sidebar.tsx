@@ -7,8 +7,6 @@ const links = [
   { name: "CRM", href: "/crm" },
   { name: "Streamers", href: "/streamers" },
   { name: "Orders", href: "/orders" },
-  { name: "Production", href: "/production" },
-  { name: "Shipping", href: "/shipping" },
   { name: "Settings", href: "/settings" },
 ]
 
