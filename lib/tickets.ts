@@ -116,6 +116,15 @@ export function healthKpis(notifications: HealthNotification[]) {
   return { open, resolutionRate, total, resolvedCount: resolved }
 }
 
+/** Open support tickets + open health notifications (for nav badge). */
+export function totalOpenTicketCount(store: TicketsStore) {
+  const tickets = normalizeTicketsStore(store)
+  return (
+    tickets.support.filter((t) => t.status === "open").length +
+    tickets.health.filter((n) => n.status === "open").length
+  )
+}
+
 export function sortSupportTickets(tickets: SupportTicket[]) {
   const open = tickets
     .filter((t) => t.status === "open")

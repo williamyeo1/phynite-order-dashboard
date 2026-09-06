@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   EmptyState,
+  FilterTabs,
   ListCard,
   MetricCard,
   MetricsGrid,
@@ -31,7 +32,15 @@ import {
 } from "@/lib/tickets"
 import { useSharedStorage } from "@/lib/useSharedStorage"
 
+type TicketsTab = "support" | "health"
+
+const TABS: { key: TicketsTab; label: string }[] = [
+  { key: "support", label: "Streamer Support" },
+  { key: "health", label: "Streamer Health" },
+]
+
 export default function TicketsPage() {
+  const [tab, setTab] = useState<TicketsTab>("support")
   const [orders] = useSharedStorage<Order[]>("orders", [])
   const [streamers] = useSharedStorage<Streamer[]>("streamers", [])
   const [ticketsRaw, setTickets] = useSharedStorage<TicketsStore>("tickets", {
@@ -139,116 +148,109 @@ export default function TicketsPage() {
       <PageHeader
         title="Tickets"
         description="Support issues and streamer health alerts that need action"
+        actions={
+          tab === "support" ? (
+            <PrimaryButton
+              className="!py-3 !px-6 !text-sm"
+              onClick={() => setShowCreate(true)}
+            >
+              + Add Support Ticket
+            </PrimaryButton>
+          ) : undefined
+        }
       />
 
-      {/* ── Streamer Support ── */}
-      <section className="mt-12">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-purple-400" />
-              <h2 className="text-2xl font-black tracking-tight">
-                Streamer Support
-              </h2>
-            </div>
-            <p className="text-zinc-500 text-sm mt-2">
-              Manually created tickets for streamer issues
-            </p>
+      <FilterTabs tabs={TABS} active={tab} onChange={setTab} className="mt-8" />
+
+      {tab === "support" && (
+        <section className="mt-10">
+          <p className="text-zinc-500 text-sm mb-6">
+            Manually created tickets for streamer issues
+          </p>
+
+          <MetricsGrid columns={3} className="mb-6">
+            <MetricCard
+              label="OPEN TICKETS"
+              value={supportMetrics.open}
+              color="text-purple-300"
+            />
+            <MetricCard
+              label="AVG. DAYS TO RESOLVE"
+              value={
+                supportMetrics.avgDays == null
+                  ? "—"
+                  : formatNumber(supportMetrics.avgDays, 1)
+              }
+              color="text-white"
+            />
+            <MetricCard
+              label="RESOLUTION RATE"
+              value={formatPercent(supportMetrics.resolutionRate, 0)}
+              color="text-cyan-400"
+            />
+          </MetricsGrid>
+
+          <div className="space-y-3">
+            {supportSorted.length === 0 ? (
+              <EmptyState>
+                No support tickets yet. Create one when a streamer needs help.
+              </EmptyState>
+            ) : (
+              supportSorted.map((ticket) => (
+                <SupportTicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  onResolve={() => {
+                    setResolveNote("")
+                    setResolveTarget({ section: "support", id: ticket.id })
+                  }}
+                />
+              ))
+            )}
           </div>
-          <PrimaryButton
-            className="!py-3 !px-6 !text-sm"
-            onClick={() => setShowCreate(true)}
-          >
-            + Add Support Ticket
-          </PrimaryButton>
-        </div>
+        </section>
+      )}
 
-        <MetricsGrid columns={3} className="mb-6">
-          <MetricCard
-            label="OPEN TICKETS"
-            value={supportMetrics.open}
-            color="text-purple-300"
-          />
-          <MetricCard
-            label="AVG. DAYS TO RESOLVE"
-            value={
-              supportMetrics.avgDays == null
-                ? "—"
-                : formatNumber(supportMetrics.avgDays, 1)
-            }
-            color="text-white"
-          />
-          <MetricCard
-            label="RESOLUTION RATE"
-            value={formatPercent(supportMetrics.resolutionRate, 0)}
-            color="text-cyan-400"
-          />
-        </MetricsGrid>
-
-        <div className="space-y-3">
-          {supportSorted.length === 0 ? (
-            <EmptyState>
-              No support tickets yet. Create one when a streamer needs help.
-            </EmptyState>
-          ) : (
-            supportSorted.map((ticket) => (
-              <SupportTicketCard
-                key={ticket.id}
-                ticket={ticket}
-                onResolve={() => {
-                  setResolveNote("")
-                  setResolveTarget({ section: "support", id: ticket.id })
-                }}
-              />
-            ))
-          )}
-        </div>
-      </section>
-
-      {/* ── Health Notifications ── */}
-      <section className="mt-16 mb-10">
-        <div className="mb-6">
-          <h2 className="text-2xl font-black tracking-tight">
-            Streamer Health Notifications
-          </h2>
-          <p className="text-zinc-500 text-sm mt-2">
+      {tab === "health" && (
+        <section className="mt-10">
+          <p className="text-zinc-500 text-sm mb-6">
             Auto-generated reorder overdue and churn risk alerts
           </p>
-        </div>
 
-        <MetricsGrid columns={2} className="mb-6">
-          <MetricCard
-            label="OPEN NOTIFICATIONS"
-            value={healthMetrics.open}
-            color="text-orange-300"
-          />
-          <MetricCard
-            label="RESOLUTION RATE"
-            value={formatPercent(healthMetrics.resolutionRate, 0)}
-            color="text-cyan-400"
-          />
-        </MetricsGrid>
+          <MetricsGrid columns={2} className="mb-6">
+            <MetricCard
+              label="OPEN NOTIFICATIONS"
+              value={healthMetrics.open}
+              color="text-orange-300"
+            />
+            <MetricCard
+              label="RESOLUTION RATE"
+              value={formatPercent(healthMetrics.resolutionRate, 0)}
+              color="text-cyan-400"
+            />
+          </MetricsGrid>
 
-        <div className="space-y-3">
-          {healthSorted.length === 0 ? (
-            <EmptyState>
-              No health notifications. Alerts appear when streamers pass their
-              expected reorder date or enter churn risk.
-            </EmptyState>
-          ) : (
-            healthSorted.map((note) => (
-              <HealthNotificationCard
-                key={note.id}
-                notification={note}
-                onResolve={() => {
-                  setResolveNote("")
-                  setResolveTarget({ section: "health", id: note.id })
-                }}
-              />
-            ))
-          )}
-        </div>
-      </section>
+          <div className="space-y-3">
+            {healthSorted.length === 0 ? (
+              <EmptyState>
+                No health notifications. Alerts appear when streamers pass their
+                expected reorder date or enter churn risk.
+              </EmptyState>
+            ) : (
+              healthSorted.map((note) => (
+                <HealthNotificationCard
+                  key={note.id}
+                  notification={note}
+                  onResolve={() => {
+                    setResolveNote("")
+                    setResolveTarget({ section: "health", id: note.id })
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      )}
 
       {showCreate && (
         <CreateSupportModal
