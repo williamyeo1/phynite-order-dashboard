@@ -274,54 +274,51 @@ export function totalActiveStreamers(
 }
 
 /**
- * Churn rate: streamers who hit day 90 since last paid during the trailing window,
+ * Churn rate: streamers who hit day 90 since last paid during [start, end],
  * divided by streamers who were eligible (active) at the start of that window.
  */
-export function churnRateForPeriod(
+export function churnRateForRange(
   rows: PaidOrderRow[],
-  days: number,
-  asOf: Date = new Date(),
+  start: Date,
+  end: Date,
   churnAfterDays = 90
 ) {
-  const { start, end } = trailingWindow(days, asOf)
   const lastPaid = lastPaidByStreamer(rows)
+  const rangeStart = startOfDay(start)
+  const rangeEnd = new Date(
+    end.getFullYear(),
+    end.getMonth(),
+    end.getDate(),
+    23,
+    59,
+    59,
+    999
+  )
 
-  // Eligible: had a paid order before period start, and were still active entering the period
-  // (last paid > start - 90 days)
-  const eligibleCutoff = new Date(start)
+  const eligibleCutoff = new Date(rangeStart)
   eligibleCutoff.setDate(eligibleCutoff.getDate() - churnAfterDays)
 
   let eligible = 0
   let churned = 0
 
   for (const [, last] of lastPaid) {
-    // Must have ordered before the period ends to be a customer
-    if (last.getTime() > end.getTime()) continue
+    if (last.getTime() > rangeEnd.getTime()) continue
 
-    // Churn date = last paid + 90 days
     const churnDate = new Date(last)
     churnDate.setDate(churnDate.getDate() + churnAfterDays)
 
-    // Eligible if they were active at period start:
-    // last paid was after (start - 90) and on/before start (or they churn during period)
     const wasActiveAtStart =
-      last.getTime() <= start.getTime() &&
+      last.getTime() <= rangeStart.getTime() &&
       last.getTime() > eligibleCutoff.getTime()
-
-    // Also include those whose last paid is during period? No — churn is about going inactive.
-    // Streamers who order during period aren't churning in that period from that order.
 
     if (wasActiveAtStart) {
       eligible++
       if (
-        churnDate.getTime() >= start.getTime() &&
-        churnDate.getTime() <= end.getTime()
+        churnDate.getTime() >= rangeStart.getTime() &&
+        churnDate.getTime() <= rangeEnd.getTime() &&
+        last.getTime() < rangeStart.getTime()
       ) {
-        // And they didn't reorder before churn date
-        // last is already their last paid — if last < start, they didn't reorder in period before churn
-        if (last.getTime() < start.getTime()) {
-          churned++
-        }
+        churned++
       }
     }
   }
@@ -330,29 +327,51 @@ export function churnRateForPeriod(
   return { rate, churned, eligible }
 }
 
-export function weeklyChurnSeries(
+export function churnRateForPeriod(
   rows: PaidOrderRow[],
-  weekCount = 12,
+  days: number,
+  asOf: Date = new Date(),
+  churnAfterDays = 90
+) {
+  const { start, end } = trailingWindow(days, asOf)
+  return churnRateForRange(rows, start, end, churnAfterDays)
+}
+
+/** Calendar-month churn series (better signal than weekly for a 90-day churn rule). */
+export function monthlyChurnSeries(
+  rows: PaidOrderRow[],
+  monthCount = 12,
   churnAfterDays = 90
 ) {
   const now = new Date()
-  const endWeek = getWeekRange(now)
-  const start = new Date(endWeek.start)
-  start.setDate(start.getDate() - (weekCount - 1) * 7)
+  const months: {
+    monthKey: string
+    label: string
+    shortLabel: string
+    rate: number
+    churned: number
+    eligible: number
+  }[] = []
 
-  return listWeekStarts(start, endWeek.start).map((startIso) => {
-    const week = getWeekRange(parseIsoAsLocal(startIso))
-    // Use week end as asOf, period = 7 days
-    const result = churnRateForPeriod(rows, 7, week.end, churnAfterDays)
-    return {
-      weekStartIso: startIso,
-      label: week.label,
-      shortLabel: formatShortWeek(week),
+  for (let i = monthCount - 1; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
+    const result = churnRateForRange(rows, start, end, churnAfterDays)
+    const label = start.toLocaleDateString(undefined, {
+      month: "short",
+      year: "numeric",
+    })
+    months.push({
+      monthKey: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+      label,
+      shortLabel: start.toLocaleDateString(undefined, { month: "short" }),
       rate: result.rate,
       churned: result.churned,
       eligible: result.eligible,
-    }
-  })
+    })
+  }
+
+  return months
 }
 
 export function periodBundle<T>(

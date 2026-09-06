@@ -33,7 +33,7 @@ import {
   paidGmvForWeek,
   weeklyActiveStreamersSeries,
   weeklyAvgOrderSizeSeries,
-  weeklyChurnSeries,
+  monthlyChurnSeries,
   type GmvForecasts,
 } from "@/lib/kpiMetrics"
 import type { Order, Streamer } from "@/lib/orderUtils"
@@ -119,7 +119,7 @@ export default function KpiPage() {
     [paidRows]
   )
   const churnSeries = useMemo(
-    () => weeklyChurnSeries(paidRows, 12),
+    () => monthlyChurnSeries(paidRows, 12),
     [paidRows]
   )
 
@@ -449,12 +449,12 @@ export default function KpiPage() {
                 </div>
                 <div className="mt-6">
                   <div className="text-[10px] tracking-[0.2em] text-zinc-600 mb-2">
-                    WEEKLY CHURN RATE TREND
+                    MONTHLY CHURN RATE TREND
                   </div>
                   <KpiLineChart
-                    data={churnSeries.map((w) => ({
-                      ...w,
-                      value: w.rate,
+                    data={churnSeries.map((m) => ({
+                      ...m,
+                      value: m.rate,
                     }))}
                     valueLabel="Churn Rate"
                     formatValue={(v) => formatPercent(v, 1)}
