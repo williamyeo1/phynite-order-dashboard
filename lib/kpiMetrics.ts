@@ -31,16 +31,8 @@ function startOfDay(date: Date) {
 }
 
 export function getOrderGmv(order: Order) {
-  const productTotal = order.products.reduce(
-    (sum, item) => sum + item.qty * item.price,
-    0
-  )
-  return (
-    productTotal +
-    (order.shipping || 0) +
-    (order.scanner ? 50 : 0) -
-    (order.credit || 0)
-  )
+  // Paid GMV = pack/product line totals only (no shipping, scanner, or credit).
+  return order.products.reduce((sum, item) => sum + item.qty * item.price, 0)
 }
 
 export function getOrderPacks(order: Order) {
