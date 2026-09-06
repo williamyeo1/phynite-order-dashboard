@@ -14,8 +14,6 @@ import {
   buildStreamerHealthProfiles,
   churnRiskLabel,
   churnRiskStyles,
-  consistencyBarClass,
-  consistencyLabel,
   type StreamerHealthProfile,
 } from "@/lib/kpiStreamerHealth"
 import type { Order, Streamer } from "@/lib/orderUtils"
@@ -60,8 +58,7 @@ export function PerStreamerDashboard({
         <div>
           <KpiSectionLabel>STREAMER HEALTH</KpiSectionLabel>
           <p className="text-zinc-500 text-sm -mt-2">
-            Ranked by Paid GMV and ordering consistency. Click a row for
-            details.
+            Ranked by Paid GMV and recent ordering. Click a row for details.
           </p>
         </div>
         <div className="text-zinc-600 text-sm tabular-nums">
@@ -107,56 +104,38 @@ function StreamerHealthRow({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left flex flex-col gap-3 px-5 py-4 hover:bg-white/[0.02] transition xl:grid xl:grid-cols-[4px_minmax(0,1.6fr)_repeat(4,minmax(0,0.85fr))_auto] xl:items-center xl:gap-4"
+        className="w-full text-left flex flex-col gap-3 px-5 py-4 hover:bg-white/[0.02] transition xl:grid xl:grid-cols-[minmax(0,1.8fr)_repeat(3,minmax(0,0.9fr))_auto] xl:items-center xl:gap-4"
       >
-        <div className="flex items-start gap-3 xl:contents">
-          <span
-            className={`h-10 w-1 rounded-full shrink-0 xl:self-stretch xl:h-auto ${consistencyBarClass(profile.consistencyHealth)}`}
-            title={consistencyLabel(profile.consistencyHealth)}
-          />
-
-          <div className="min-w-0 flex items-center gap-3 flex-1">
-            <span className="text-zinc-600 text-sm font-medium tabular-nums shrink-0 w-8">
-              #{profile.rank}
-            </span>
-            <div className="min-w-0">
-              <div className="font-semibold text-white truncate">
-                {profile.brandName}
-                {profile.personName ? (
-                  <span className="text-zinc-500 font-normal ml-2">
-                    {profile.personName}
-                  </span>
-                ) : null}
-              </div>
-              <div className="text-zinc-600 text-xs mt-0.5">
-                {profile.paidOrderCount} paid order
-                {profile.paidOrderCount === 1 ? "" : "s"} ·{" "}
-                {consistencyLabel(profile.consistencyHealth)}
-              </div>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-zinc-600 text-sm font-medium tabular-nums shrink-0 w-8">
+            #{profile.rank}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-white truncate">
+              {profile.brandName}
+              {profile.personName ? (
+                <span className="text-zinc-500 font-normal ml-2">
+                  {profile.personName}
+                </span>
+              ) : null}
+            </div>
+            <div className="text-zinc-600 text-xs mt-0.5">
+              {profile.paidOrderCount} paid order
+              {profile.paidOrderCount === 1 ? "" : "s"}
             </div>
           </div>
-
-          <div className="text-zinc-600 text-xl shrink-0 xl:order-last">
+          <div className="text-zinc-600 text-xl shrink-0 xl:hidden">
             {expanded ? "−" : "+"}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pl-4 xl:contents xl:pl-0">
+        <div className="grid grid-cols-3 gap-3 pl-8 xl:contents xl:pl-0">
           <div>
             <div className="text-[10px] tracking-[0.2em] text-zinc-600">
               PAID GMV
             </div>
             <div className="text-sm font-semibold text-cyan-400 tabular-nums mt-1">
               {formatMoney(profile.totalPaidGmv)}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-[10px] tracking-[0.2em] text-zinc-600">
-              CONSISTENCY
-            </div>
-            <div className="text-sm font-semibold text-zinc-300 mt-1">
-              {consistencyLabel(profile.consistencyHealth)}
             </div>
           </div>
 
@@ -179,6 +158,10 @@ function StreamerHealthRow({
               {churnRiskLabel(profile.churnRisk)}
             </span>
           </div>
+        </div>
+
+        <div className="hidden xl:block text-zinc-600 text-xl shrink-0 pr-1">
+          {expanded ? "−" : "+"}
         </div>
       </button>
 

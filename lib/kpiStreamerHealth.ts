@@ -139,8 +139,8 @@ export function consistencyLabel(health: ConsistencyHealth) {
 }
 
 /**
- * Consistency 0–100 from order frequency + volume.
- * Weekly-ish reorders score high; single orders score near bottom.
+ * Consistency 0–100 from historical frequency + recent reorder activity.
+ * Weekly-ish reorders score high; single orders and stale streamers score low.
  */
 export function scoreConsistency(
   paidOrderCount: number,
@@ -148,32 +148,33 @@ export function scoreConsistency(
   daysSinceLastOrder: number
 ): { score: number; health: ConsistencyHealth } {
   if (paidOrderCount <= 1) {
-    return { score: 8, health: "red" }
+    return { score: 5, health: "red" }
   }
 
   const gap = avgDaysBetween ?? 90
-  // Ideal ~7 days; score drops as gap grows
-  let frequencyScore = Math.max(0, 100 - ((gap - 7) / 53) * 100)
+
+  let frequencyScore = 8
   if (gap <= 8) frequencyScore = 100
   else if (gap <= 14) frequencyScore = 78
   else if (gap <= 21) frequencyScore = 55
   else if (gap <= 35) frequencyScore = 35
   else if (gap <= 60) frequencyScore = 18
-  else frequencyScore = 8
 
-  // Reward more orders (log-ish)
-  const volumeBoost = Math.min(20, Math.log2(paidOrderCount) * 8)
+  const volumeBoost = Math.min(15, Math.log2(paidOrderCount) * 6)
 
-  // Penalize if currently stale vs their own cadence
-  let recencyPenalty = 0
-  if (daysSinceLastOrder > gap * 1.5 && daysSinceLastOrder > 21) {
-    recencyPenalty = Math.min(25, (daysSinceLastOrder - gap) * 0.8)
+  // Strong recency haircut: if they haven't reordered recently,
+  // historical consistency should barely help ranking.
+  let recencyFactor = 1
+  if (daysSinceLastOrder >= 60) recencyFactor = 0.15
+  else if (daysSinceLastOrder >= 45) recencyFactor = 0.3
+  else if (daysSinceLastOrder >= 30) recencyFactor = 0.5
+  else if (daysSinceLastOrder >= 21) recencyFactor = 0.7
+  else if (avgDaysBetween != null && daysSinceLastOrder > avgDaysBetween * 1.75) {
+    recencyFactor = 0.55
   }
 
-  const score = Math.max(
-    0,
-    Math.min(100, frequencyScore + volumeBoost - recencyPenalty)
-  )
+  const raw = frequencyScore + volumeBoost
+  const score = Math.max(0, Math.min(100, raw * recencyFactor))
 
   let health: ConsistencyHealth
   if (score >= 75) health = "green"
@@ -318,12 +319,12 @@ export function buildStreamerHealthProfiles(
     })
   }
 
-  // Rank score: blend GMV (log) + consistency. Not pure GMV.
+  // Rank score: Paid GMV 60% + consistency 40% (consistency already recency-weighted).
   const maxGmv = Math.max(...profiles.map((p) => p.totalPaidGmv), 1)
   const scored = profiles.map((p) => {
     const gmvScore =
       (Math.log10(p.totalPaidGmv + 1) / Math.log10(maxGmv + 1)) * 100
-    const rankScore = gmvScore * 0.55 + p.consistencyScore * 0.45
+    const rankScore = gmvScore * 0.6 + p.consistencyScore * 0.4
     return { ...p, rankScore }
   })
 
