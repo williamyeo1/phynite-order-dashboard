@@ -9,6 +9,7 @@ import {
 import { KpiCard, KpiSectionLabel, PeriodStrip, TrendBadge } from "@/components/kpi/KpiCard"
 import { KpiLineChart } from "@/components/kpi/KpiLineChart"
 import { WeekForecastControls } from "@/components/kpi/WeekForecastControls"
+import { PerStreamerDashboard } from "@/components/kpi/PerStreamerDashboard"
 import {
   formatMoney,
   formatNumber,
@@ -165,9 +166,7 @@ export default function KpiPage() {
 
       {tab === "streamer" && (
         <div className="mt-10">
-          <EmptyState>
-            Per Streamer KPIs coming soon. Switch to Overall for live metrics.
-          </EmptyState>
+          <PerStreamerDashboard orders={orders} streamers={streamers} />
         </div>
       )}
 
