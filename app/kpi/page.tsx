@@ -26,14 +26,12 @@ import {
   avgOrderSizeWithPrior,
   avgWeeklyUniqueWithPrior,
   buildPaidOrderRows,
-  churnRateForPeriod,
   forecastForWeek,
   forecastVariance,
   paidGmvAttainment,
   paidGmvForWeek,
   weeklyActiveStreamersSeries,
   weeklyAvgOrderSizeSeries,
-  monthlyChurnSeries,
   type GmvForecasts,
 } from "@/lib/kpiMetrics"
 import type { Order, Streamer } from "@/lib/orderUtils"
@@ -112,14 +110,6 @@ export default function KpiPage() {
   )
   const active = useMemo(
     () => activeStreamersWithPrior(paidRows),
-    [paidRows]
-  )
-  const churn = useMemo(
-    () => churnRateForPeriod(paidRows, 30),
-    [paidRows]
-  )
-  const churnSeries = useMemo(
-    () => monthlyChurnSeries(paidRows, 12),
     [paidRows]
   )
 
@@ -430,36 +420,6 @@ export default function KpiPage() {
                 </div>
                 <div className="mt-6 text-sm text-zinc-500">
                   Paid order within the last 90 days
-                </div>
-              </KpiCard>
-
-              <KpiCard label="STREAMER CHURN RATE" className="lg:col-span-2">
-                <div className="mt-4 text-5xl font-black tabular-nums text-white">
-                  {formatPercent(churn.rate, 1)}
-                </div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Churned Streamers:{" "}
-                  <span className="text-white font-semibold">
-                    {churn.churned}
-                  </span>
-                  <span className="text-zinc-600">
-                    {" "}
-                    / {churn.eligible} eligible (30D)
-                  </span>
-                </div>
-                <div className="mt-6">
-                  <div className="text-[10px] tracking-[0.2em] text-zinc-600 mb-2">
-                    MONTHLY CHURN RATE TREND
-                  </div>
-                  <KpiLineChart
-                    data={churnSeries.map((m) => ({
-                      ...m,
-                      value: m.rate,
-                    }))}
-                    valueLabel="Churn Rate"
-                    formatValue={(v) => formatPercent(v, 1)}
-                    color="#fb7185"
-                  />
                 </div>
               </KpiCard>
             </div>
