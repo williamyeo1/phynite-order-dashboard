@@ -8,6 +8,7 @@ export const STORAGE_KEYS = [
   "shipping",
   "invoices",
   "gmvForecasts",
+  "tickets",
 ] as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[number]

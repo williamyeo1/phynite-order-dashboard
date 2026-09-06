@@ -8,6 +8,7 @@ const links = [
   { name: "Streamers", href: "/streamers" },
   { name: "Orders", href: "/orders" },
   { name: "KPI", href: "/kpi" },
+  { name: "Tickets", href: "/tickets" },
   { name: "Settings", href: "/settings" },
 ]
 
