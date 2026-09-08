@@ -680,22 +680,37 @@ export default function CRMPage() {
   }
 
   async function sendBulkReactivationEmails() {
-    const targets = filtered.filter(
+    const selectedWithEmail = filtered.filter(
       (l) => selectedIds.has(l.id) && l.email?.trim()
     )
     const missingEmail = filtered.filter(
       (l) => selectedIds.has(l.id) && !l.email?.trim()
     )
 
-    if (targets.length === 0) {
+    if (selectedWithEmail.length === 0) {
       alert("No selected leads with email addresses.")
       return
     }
 
-    const alreadySent = targets.filter((l) => l.reactivationEmailSentAt)
-    let confirmMsg = `Send reactivation email to ${targets.length} lead${targets.length === 1 ? "" : "s"}?`
+    const alreadySent = selectedWithEmail.filter(
+      (l) => l.reactivationEmailSentAt
+    )
+    const targets = selectedWithEmail.filter((l) => !l.reactivationEmailSentAt)
+
+    if (targets.length === 0) {
+      alert(
+        alreadySent.length === 1
+          ? "That lead already received this email. Nothing new to send."
+          : `All ${alreadySent.length} selected leads already received this email. Nothing new to send.`
+      )
+      return
+    }
+
+    let confirmMsg = ""
     if (alreadySent.length > 0) {
-      confirmMsg += `\n\n${alreadySent.length} already received this email — they will get it again.`
+      confirmMsg = `${alreadySent.length} ${alreadySent.length === 1 ? "person has" : "people have"} already received this email.\n\nOnly send it to the ${targets.length} who ${targets.length === 1 ? "hasn't" : "haven't"} received it?`
+    } else {
+      confirmMsg = `Send reactivation email to ${targets.length} lead${targets.length === 1 ? "" : "s"}?`
     }
     if (missingEmail.length > 0) {
       confirmMsg += `\n\n${missingEmail.length} selected lead${missingEmail.length === 1 ? "" : "s"} skipped (no email).`
@@ -721,7 +736,11 @@ export default function CRMPage() {
 
     setBulkProgress(null)
     clearSelection()
-    alert(`Sent ${sent} of ${targets.length} emails.`)
+    const skippedNote =
+      alreadySent.length > 0
+        ? ` Skipped ${alreadySent.length} who already received it.`
+        : ""
+    alert(`Sent ${sent} of ${targets.length} emails.${skippedNote}`)
   }
 
   const leadsInScope = useMemo(() => {
