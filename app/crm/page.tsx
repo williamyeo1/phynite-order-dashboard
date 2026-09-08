@@ -625,7 +625,7 @@ export default function CRMPage() {
     }
 
     const template = buildReactivationEmail({
-      firstName: lead.firstName,
+      firstName: formatPersonName(lead.firstName),
       brandName: lead.brandName,
     })
 

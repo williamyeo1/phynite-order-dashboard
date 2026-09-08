@@ -8,7 +8,7 @@ export type CrmEmailLead = {
 }
 
 export function buildReactivationEmail(lead: CrmEmailLead) {
-  const greetingName = lead.firstName || lead.brandName || "there"
+  const greetingName = lead.firstName.trim() || "there"
 
   const subject = "The Next 25 Phynite Partners"
 
