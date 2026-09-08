@@ -10,6 +10,7 @@ import { TimePeriodFilter } from "@/components/TimePeriodFilter"
 import {
   DashboardInput,
   EmptyState,
+  FieldLabel,
   FilterTabs,
   ListCard,
   MetricCard,
@@ -122,6 +123,13 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "meeting_booked", label: "Meeting Booked" },
   { key: "meeting_held", label: "Meeting Held" },
   { key: "closed", label: "Closed" },
+]
+
+type SortBy = "followers" | "date_added"
+
+const SORT_OPTIONS: { key: SortBy; label: string }[] = [
+  { key: "followers", label: "Followers" },
+  { key: "date_added", label: "Date added" },
 ]
 
 function Input({
@@ -314,6 +322,7 @@ export default function CRMPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [followerMin, setFollowerMin] = useState("")
   const [followerMax, setFollowerMax] = useState("")
+  const [sortBy, setSortBy] = useState<SortBy>("followers")
   const [sendingIds, setSendingIds] = useState<Set<number>>(new Set())
   const [bulkProgress, setBulkProgress] = useState<{
     current: number
@@ -831,10 +840,15 @@ export default function CRMPage() {
       result = result.filter((l) => (l.followerCount || 0) <= maxFollowers)
     }
 
-    return [...result].sort(
-      (a, b) => (b.followerCount || 0) - (a.followerCount || 0)
-    )
-  }, [leads, search, filterTab, timeFilter, followerMin, followerMax])
+    return [...result].sort((a, b) => {
+      if (sortBy === "date_added") {
+        const aTime = new Date(a.importedAt || 0).getTime()
+        const bTime = new Date(b.importedAt || 0).getTime()
+        return bTime - aTime
+      }
+      return (b.followerCount || 0) - (a.followerCount || 0)
+    })
+  }, [leads, search, filterTab, timeFilter, followerMin, followerMax, sortBy])
 
   const visibleIds = useMemo(
     () => filtered.map((l) => l.id),
@@ -972,6 +986,16 @@ export default function CRMPage() {
               Clear follower filter
             </button>
           )}
+        </div>
+
+        <div className="mt-6">
+          <FieldLabel>SORT BY</FieldLabel>
+          <FilterTabs
+            tabs={SORT_OPTIONS}
+            active={sortBy}
+            onChange={setSortBy}
+            className="mt-2"
+          />
         </div>
 
         {selectedIds.size > 0 && (
