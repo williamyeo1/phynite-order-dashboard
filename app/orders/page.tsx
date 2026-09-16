@@ -19,9 +19,11 @@ import {
   findStreamerByOrderName,
   formatOrderDate,
   getOrderBrandName,
+  getOrderScannerQuantity,
   getOrderStreamerDisplay,
   loadProduction,
   loadStreamers,
+  SCANNER_UNIT_PRICE,
   saveProduction,
   type Streamer,
 } from "@/lib/orderUtils"
@@ -60,7 +62,8 @@ type Order = {
   date: string
   products: LineItem[]
   shipping: number
-  scanner: boolean
+  scanner?: boolean
+  scannerQuantity?: number
   credit?: number
   paid?: boolean
   paidAt?: string
@@ -109,7 +112,7 @@ export default function OrdersPage() {
   const [streamer, setStreamer] = useState("")
   const [orderDate, setOrderDate] = useState(todayIsoDate())
   const [shipping, setShipping] = useState(0)
-  const [scanner, setScanner] = useState(false)
+  const [scannerQuantity, setScannerQuantity] = useState(0)
   const [credit, setCredit] = useState(0)
   const [timeFilter, setTimeFilter] = useState<TimeFilter>(DEFAULT_TIME_FILTER)
   const [search, setSearch] = useState("")
@@ -169,7 +172,7 @@ export default function OrdersPage() {
     setStreamer("")
     setOrderDate(todayIsoDate())
     setShipping(0)
-    setScanner(false)
+    setScannerQuantity(0)
     setCredit(0)
 
     setLineItems([
@@ -234,7 +237,8 @@ export default function OrdersPage() {
         date: orderDate,
         products: lineItems,
         shipping,
-        scanner,
+        scanner: scannerQuantity > 0,
+        scannerQuantity,
         credit,
         paid: existingOrder?.paid || false,
         emailType: existingOrder?.emailType || emailType,
@@ -262,7 +266,10 @@ export default function OrdersPage() {
       )
 
       const total =
-        productTotal + shipping + (scanner ? 50 : 0) - (credit || 0)
+        productTotal +
+        shipping +
+        scannerQuantity * SCANNER_UNIT_PRICE -
+        (credit || 0)
 
       const newInvoice = {
         id: Date.now(),
@@ -271,6 +278,8 @@ export default function OrdersPage() {
         streamer,
         products: lineItems,
         shipping,
+        scanner: scannerQuantity > 0,
+        scannerQuantity,
         credit: credit || 0,
         total,
         status: "unpaid",
@@ -405,7 +414,7 @@ export default function OrdersPage() {
     setStreamer(getOrderBrandName(order.streamer))
     setOrderDate(toIsoDateString(order.date))
     setShipping(order.shipping)
-    setScanner(order.scanner)
+    setScannerQuantity(getOrderScannerQuantity(order))
     setCredit(order.credit || 0)
     setLineItems(order.products)
 
@@ -737,7 +746,7 @@ William Yeo
             0
           ) +
           order.shipping +
-          (order.scanner ? 50 : 0)
+          getOrderScannerQuantity(order) * SCANNER_UNIT_PRICE
 
         const hasOldBlack =
           order.products.some(
@@ -1109,17 +1118,24 @@ William Yeo
           </div>
 
           <div className="mt-10">
-            <label className="flex items-center gap-3 text-lg">
-              <input
-                type="checkbox"
-                checked={scanner}
-                onChange={() =>
-                  setScanner(!scanner)
-                }
-              />
-
-              Include QR Scanner ($50)
+            <label className="text-xs tracking-[0.3em] text-zinc-500 block mb-4">
+              QR CODE SCANNERS ($50 EACH)
             </label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={scannerQuantity}
+              onChange={(e) =>
+                setScannerQuantity(
+                  Math.max(0, Math.floor(Number(e.target.value) || 0))
+                )
+              }
+              className="w-full bg-black border border-white/10 rounded-2xl px-5 py-5 text-xl"
+            />
+            <p className="text-zinc-500 text-sm mt-2">
+              Enter 0 if no QR code scanners are needed.
+            </p>
           </div>
 
           <div className="mt-10">
@@ -1415,8 +1431,10 @@ console.log(order)
           justify-content:space-between;
           margin-bottom:14px;
         ">
-          <span>Scanner</span>
-          <span>$${(order.scanner ? 50 : 0).toFixed(2)}</span>
+          <span>QR Scanners (${getOrderScannerQuantity(order)} × $${SCANNER_UNIT_PRICE})</span>
+          <span>$${(
+            getOrderScannerQuantity(order) * SCANNER_UNIT_PRICE
+          ).toFixed(2)}</span>
         </div>
 
         ${order.credit ? `
@@ -1442,7 +1460,7 @@ console.log(order)
           <span>$${(
   subtotal +
   Number(order.shipping || 0) +
-  (order.scanner ? 50 : 0) -
+  getOrderScannerQuantity(order) * SCANNER_UNIT_PRICE -
   (order.credit || 0)
 ).toFixed(2)}</span>
         </div>

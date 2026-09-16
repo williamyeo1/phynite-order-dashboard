@@ -1,4 +1,8 @@
 import jsPDF from "jspdf"
+import {
+  getOrderScannerQuantity,
+  SCANNER_UNIT_PRICE,
+} from "@/lib/orderUtils"
 
 const formatMoney = (value: number) => `$${value.toFixed(2)}`
 
@@ -127,7 +131,8 @@ export const generateInvoicePdf = (order: any) => {
   y += 20
 
   const shippingCost = Number(order.shipping || 0)
-  const scannerCost = order.scanner ? 50 : 0
+  const scannerQuantity = getOrderScannerQuantity(order)
+  const scannerCost = scannerQuantity * SCANNER_UNIT_PRICE
   const creditAmount = Number(order.credit || 0)
   const total = subtotal + shippingCost + scannerCost - creditAmount
 
@@ -145,7 +150,9 @@ export const generateInvoicePdf = (order: any) => {
     align: "right",
   })
   y += 18
-  doc.text("Scanner", totalsLabelX, y, { align: "right" })
+  doc.text(`QR Scanners (${scannerQuantity} x $${SCANNER_UNIT_PRICE})`, totalsLabelX, y, {
+    align: "right",
+  })
   doc.text(formatMoney(scannerCost), totalsValueX, y, {
     align: "right",
   })

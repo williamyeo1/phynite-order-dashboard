@@ -15,12 +15,24 @@ export type Order = {
   date: string
   products: OrderLineItem[]
   shipping: number
-  scanner: boolean
+  scanner?: boolean
+  scannerQuantity?: number
   credit?: number
   paid?: boolean
   paidAt?: string
   emailType?: string
   email?: string
+}
+
+export const SCANNER_UNIT_PRICE = 50
+
+export function getOrderScannerQuantity(
+  order: Pick<Order, "scanner" | "scannerQuantity">
+) {
+  if (order.scannerQuantity != null) {
+    return Math.max(0, Math.floor(Number(order.scannerQuantity) || 0))
+  }
+  return order.scanner ? 1 : 0
 }
 
 export type ProductionRecord = {
