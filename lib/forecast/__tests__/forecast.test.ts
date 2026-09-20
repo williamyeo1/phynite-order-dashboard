@@ -186,7 +186,7 @@ describe("matching", () => {
     expect(result.matched[0].via).toBe("creatorLink")
   })
 
-  it("suggests normalized names but never auto-accepts", () => {
+  it("auto-accepts unique normalized name matches", () => {
     const result = matchCreators({
       creators: [
         { externalCreatorId: "unknown1", streamerName: "Cats Paw TCG" },
@@ -194,11 +194,64 @@ describe("matching", () => {
       streamers,
       creatorLinks: [],
     })
-    expect(result.unmatched).toHaveLength(1)
-    expect(result.suggestions.length).toBeGreaterThanOrEqual(1)
+    expect(result.matched).toHaveLength(1)
+    expect(result.matched[0].via).toBe("normalizedName")
+    expect(result.matched[0].streamerId).toBe(2)
+    expect(result.unmatched).toHaveLength(0)
     expect(normalizeCreatorName("Cats' Paw TCG")).toBe(
       normalizeCreatorName("catspawtcg")
     )
+  })
+
+  it("can disable auto-accept and only suggest", () => {
+    const result = matchCreators({
+      creators: [
+        { externalCreatorId: "unknown1", streamerName: "Cats Paw TCG" },
+      ],
+      streamers,
+      creatorLinks: [],
+      autoAcceptNameMatches: false,
+    })
+    expect(result.matched).toHaveLength(0)
+    expect(result.suggestions.length).toBeGreaterThanOrEqual(1)
+    expect(result.unmatched).toHaveLength(1)
+  })
+
+  it("auto-accepts high-confidence fuzzy names like Ltd variants", () => {
+    const result = matchCreators({
+      creators: [
+        {
+          externalCreatorId: "hypercardsLimited",
+          streamerName: "Hypercards Limited",
+        },
+      ],
+      streamers: [
+        {
+          ...streamers[0],
+          id: 99,
+          brandName: "Hypercards Ltd.",
+          externalCreatorId: undefined,
+        },
+      ],
+      creatorLinks: [],
+    })
+    expect(result.matched).toHaveLength(1)
+    expect(result.matched[0].streamerId).toBe(99)
+    expect(["normalizedName", "fuzzyName"]).toContain(result.matched[0].via)
+  })
+
+  it("skips ignored creator ids", () => {
+    const result = matchCreators({
+      creators: [
+        { externalCreatorId: "skipMe", streamerName: "Totally Unknown Brand" },
+      ],
+      streamers,
+      creatorLinks: [],
+      ignoredCreatorIds: ["skipMe"],
+    })
+    expect(result.matched).toHaveLength(0)
+    expect(result.unmatched).toHaveLength(0)
+    expect(result.suggestions).toHaveLength(0)
   })
 })
 

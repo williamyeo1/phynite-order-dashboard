@@ -16,6 +16,7 @@ export type UpsertDailySalesOptions = {
   asOf?: Date
   streamers?: Streamer[]
   creatorLinks?: CreatorLink[]
+  ignoredCreatorIds?: string[]
   importId?: string
 }
 
@@ -27,6 +28,10 @@ export type UpsertDailySalesResult = {
   acceptedBlack: number
   acceptedWhite: number
   unmatchedCreatorIds: string[]
+  /** Newly auto-linked via normalized/fuzzy name (persist these). */
+  autoLinked: CreatorLink[]
+  /** Close / ambiguous matches for the user to confirm. */
+  suggestions: import("@/lib/forecast/types").CreatorMatchResult["suggestions"]
   rejectedCurrentDayRows: number
   minDate: string | null
   maxDate: string | null
@@ -62,15 +67,32 @@ export function upsertDailySales(
 
   const streamers = options.streamers ?? []
   const creatorLinks = options.creatorLinks ?? []
+  const ignoredCreatorIds = options.ignoredCreatorIds ?? []
 
   const creators = parsedRows.map((r) => ({
     externalCreatorId: r.externalCreatorId,
     streamerName: r.streamerName,
   }))
-  const matchResult = matchCreators({ creators, streamers, creatorLinks })
+  const matchResult = matchCreators({
+    creators,
+    streamers,
+    creatorLinks,
+    ignoredCreatorIds,
+    autoAcceptNameMatches: true,
+  })
   const matchMap = new Map(
     matchResult.matched.map((m) => [m.externalCreatorId, m.streamerId])
   )
+
+  const autoLinked: CreatorLink[] = matchResult.matched
+    .filter((m) => m.via === "normalizedName" || m.via === "fuzzyName")
+    .map((m) => ({
+      externalCreatorId: m.externalCreatorId,
+      streamerId: m.streamerId,
+      streamerName: m.streamerName,
+      linkedAt: now,
+      linkedBy: `auto-${m.via}`,
+    }))
 
   const byKey = new Map<string, DailySaleRow>()
   for (const row of existing) {
@@ -170,6 +192,12 @@ export function upsertDailySales(
         : undefined,
   }
 
+  // Review queue = creators the matcher couldn't auto-link (excl. ignored).
+  // Suggestions are a subset with proposed candidates.
+  const reviewIds = [
+    ...new Set(matchResult.unmatched.map((u) => u.externalCreatorId)),
+  ].sort()
+
   return {
     rows: Array.from(byKey.values()).sort((a, b) =>
       a.saleDate.localeCompare(b.saleDate)
@@ -179,7 +207,9 @@ export function upsertDailySales(
     updated,
     acceptedBlack,
     acceptedWhite,
-    unmatchedCreatorIds: Array.from(unmatchedSet).sort(),
+    unmatchedCreatorIds: reviewIds,
+    autoLinked,
+    suggestions: matchResult.suggestions,
     rejectedCurrentDayRows,
     minDate,
     maxDate,

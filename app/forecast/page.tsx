@@ -74,20 +74,21 @@ function nextWeekStartIso() {
 function listUnmatchedCreatorIds(
   sales: DailySaleRow[],
   creatorLinks: CreatorLink[],
-  streamers: Streamer[]
+  streamers: Streamer[],
+  ignoredCreatorIds: string[] = []
 ): string[] {
   const linked = new Set(creatorLinks.map((l) => l.externalCreatorId))
   const streamerExt = new Set(
-    streamers
-      .map((s) => s.externalCreatorId)
-      .filter((id): id is string => Boolean(id))
+    streamers.map((s) => s.externalCreatorId).filter(Boolean) as string[]
   )
+  const ignored = new Set(ignoredCreatorIds)
   const unmatched = new Set<string>()
   for (const row of sales) {
-    if (row.streamerId != null) continue
+    if (ignored.has(row.externalCreatorId)) continue
     if (linked.has(row.externalCreatorId) || streamerExt.has(row.externalCreatorId)) {
       continue
     }
+    if (row.streamerId != null) continue
     unmatched.add(row.externalCreatorId)
   }
   return [...unmatched].sort()
@@ -183,6 +184,10 @@ export default function DemandForecastPage() {
     "creatorLinks",
     []
   )
+  const [ignoredCreators, setIgnoredCreators] = useSharedStorage<string[]>(
+    "ignoredCreators",
+    []
+  )
   const [forecasts, setForecasts] = useSharedStorage<DemandForecastSnapshot[]>(
     "demandForecasts",
     []
@@ -201,6 +206,10 @@ export default function DemandForecastPage() {
   const [filter, setFilter] = useState<TableFilter>("all")
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [showUnmatched, setShowUnmatched] = useState(false)
+  const [importSuggestions, setImportSuggestions] = useState<
+    import("@/lib/forecast/types").CreatorMatchResult["suggestions"]
+  >([])
+  const [reviewCreatorIds, setReviewCreatorIds] = useState<string[] | null>(null)
   const [importMessage, setImportMessage] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -211,8 +220,21 @@ export default function DemandForecastPage() {
   )
 
   const unmatchedIds = useMemo(
-    () => listUnmatchedCreatorIds(dailySales, creatorLinks, streamers),
-    [dailySales, creatorLinks, streamers]
+    () =>
+      reviewCreatorIds ??
+      listUnmatchedCreatorIds(
+        dailySales,
+        creatorLinks,
+        streamers,
+        ignoredCreators
+      ),
+    [
+      reviewCreatorIds,
+      dailySales,
+      creatorLinks,
+      streamers,
+      ignoredCreators,
+    ]
   )
 
   const savedForWeek = useMemo(() => {
@@ -328,7 +350,33 @@ export default function DemandForecastPage() {
         allowCurrentDay: false,
         creatorLinks,
         streamers,
+        ignoredCreatorIds: ignoredCreators,
       })
+
+      // Persist newly auto-linked creators for future imports
+      if (upsert.autoLinked.length > 0) {
+        setCreatorLinks(
+          (prev) => {
+            const base = Array.isArray(prev) ? prev : []
+            const byId = new Map(base.map((l) => [l.externalCreatorId, l]))
+            for (const link of upsert.autoLinked) {
+              byId.set(link.externalCreatorId, link)
+            }
+            return [...byId.values()]
+          },
+          { flushImmediately: true }
+        )
+        setStreamers(
+          (prev) =>
+            (Array.isArray(prev) ? prev : []).map((s) => {
+              const link = upsert.autoLinked.find((l) => l.streamerId === s.id)
+              if (!link) return s
+              if (s.externalCreatorId) return s
+              return { ...s, externalCreatorId: link.externalCreatorId }
+            }),
+          { flushImmediately: true }
+        )
+      }
 
       setDailySales(upsert.rows, { flushImmediately: true })
       setImports(
@@ -344,8 +392,11 @@ export default function DemandForecastPage() {
       )
 
       setImportMessage(
-        `Imported ${file.name}: +${upsert.inserted} / ~${upsert.updated} updated · B${upsert.acceptedBlack}/W${upsert.acceptedWhite} · ignored products ${parsed.ignoredProductRows} · unmatched ${upsert.unmatchedCreatorIds.length} · rejected current-day ${upsert.rejectedCurrentDayRows}`
+        `Imported ${file.name}: +${upsert.inserted} / ~${upsert.updated} updated · B${upsert.acceptedBlack}/W${upsert.acceptedWhite} · auto-linked ${upsert.autoLinked.length} · review ${upsert.unmatchedCreatorIds.length} · ignored products ${parsed.ignoredProductRows} · rejected current-day ${upsert.rejectedCurrentDayRows}`
       )
+
+      setImportSuggestions(upsert.suggestions)
+      setReviewCreatorIds(upsert.unmatchedCreatorIds)
       if (upsert.unmatchedCreatorIds.length > 0) {
         setShowUnmatched(true)
       }
@@ -382,8 +433,11 @@ export default function DemandForecastPage() {
       const unmatched = listUnmatchedCreatorIds(
         sales,
         Array.isArray(data.creatorLinks) ? data.creatorLinks : creatorLinks,
-        streamers
+        streamers,
+        ignoredCreators
       )
+      setReviewCreatorIds(unmatched)
+      setImportSuggestions([])
       if (unmatched.length > 0) setShowUnmatched(true)
     } catch (err) {
       setImportMessage(
@@ -397,10 +451,9 @@ export default function DemandForecastPage() {
     const link: CreatorLink = {
       externalCreatorId,
       streamerId,
-      streamerName: streamer
-        ? [streamer.firstName, streamer.lastName].filter(Boolean).join(" ")
-        : undefined,
+      streamerName: streamer?.brandName,
       linkedAt: new Date().toISOString(),
+      linkedBy: "manual",
     }
 
     setCreatorLinks(
@@ -417,7 +470,11 @@ export default function DemandForecastPage() {
     setStreamers(
       (prev) =>
         (Array.isArray(prev) ? prev : []).map((s) =>
-          s.id === streamerId ? { ...s, externalCreatorId } : s
+          s.id === streamerId
+            ? s.externalCreatorId
+              ? s
+              : { ...s, externalCreatorId }
+            : s
         ),
       { flushImmediately: true }
     )
@@ -430,6 +487,29 @@ export default function DemandForecastPage() {
             : row
         ),
       { flushImmediately: true }
+    )
+
+    setReviewCreatorIds((prev) =>
+      prev ? prev.filter((id) => id !== externalCreatorId) : prev
+    )
+    setImportSuggestions((prev) =>
+      prev.filter((s) => s.externalCreatorId !== externalCreatorId)
+    )
+  }
+
+  function ignoreCreator(externalCreatorId: string) {
+    setIgnoredCreators(
+      (prev) =>
+        Array.from(
+          new Set([...(Array.isArray(prev) ? prev : []), externalCreatorId])
+        ),
+      { flushImmediately: true }
+    )
+    setReviewCreatorIds((prev) =>
+      prev ? prev.filter((id) => id !== externalCreatorId) : prev
+    )
+    setImportSuggestions((prev) =>
+      prev.filter((s) => s.externalCreatorId !== externalCreatorId)
     )
   }
 
@@ -781,10 +861,16 @@ export default function DemandForecastPage() {
       {showUnmatched && (
         <UnmatchedCreatorsModal
           unmatchedCreatorIds={unmatchedIds}
+          suggestions={importSuggestions}
           dailySales={dailySales}
           streamers={streamers}
-          onClose={() => setShowUnmatched(false)}
+          onClose={() => {
+            setShowUnmatched(false)
+            setReviewCreatorIds(null)
+            setImportSuggestions([])
+          }}
           onLink={linkCreator}
+          onIgnore={ignoreCreator}
         />
       )}
     </>

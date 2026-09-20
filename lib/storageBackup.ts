@@ -12,6 +12,7 @@ export const STORAGE_KEYS = [
   "dailySales",
   "dailySalesImports",
   "creatorLinks",
+  "ignoredCreators",
   "demandForecasts",
   "inventoryConfirmations",
 ] as const

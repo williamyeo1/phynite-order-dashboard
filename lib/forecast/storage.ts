@@ -6,6 +6,8 @@ export const FORECAST_STORAGE_KEYS = {
   dailySales: "dailySales",
   dailySalesImports: "dailySalesImports",
   creatorLinks: "creatorLinks",
+  /** External creator IDs the user chose to ignore (don't re-prompt). */
+  ignoredCreators: "ignoredCreators",
   demandForecasts: "demandForecasts",
   inventoryConfirmations: "inventoryConfirmations",
 } as const

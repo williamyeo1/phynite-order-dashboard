@@ -91,12 +91,19 @@ export type CreatorLink = {
   linkedBy?: string
 }
 
+export type CreatorMatchVia =
+  | "externalCreatorId"
+  | "creatorLink"
+  | "normalizedName"
+  | "fuzzyName"
+
 export type CreatorMatchResult = {
   matched: Array<{
     externalCreatorId: string
     streamerId: number
     streamerName: string
-    via: "externalCreatorId" | "creatorLink"
+    via: CreatorMatchVia
+    confidence?: number
   }>
   unmatched: Array<{
     externalCreatorId: string
@@ -108,6 +115,7 @@ export type CreatorMatchResult = {
     candidateStreamerIds: number[]
     candidateNames: string[]
     reason: string
+    confidence?: number
   }>
 }
 
