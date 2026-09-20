@@ -10,6 +10,13 @@ type RemoteRow = {
 
 const META_STORAGE_KEY = "dashboard_storage_meta"
 
+/**
+ * Large time-series blobs (esp. dailySales ~5MB) blow the typical 5MB
+ * localStorage quota and used to abort the entire cloud sync. Keep these
+ * in memory + Supabase only.
+ */
+const MEMORY_ONLY_KEYS = new Set<StorageKey>(["dailySales"])
+
 const cache: Partial<Record<StorageKey, unknown>> = {}
 const keyUpdatedAt: Partial<Record<StorageKey, string>> = {}
 const listeners = new Set<Listener>()
@@ -25,8 +32,13 @@ function notify() {
   listeners.forEach((listener) => listener())
 }
 
+function isEmptyArray(value: unknown) {
+  return Array.isArray(value) && value.length === 0
+}
+
 function readLocal<T>(key: StorageKey, fallback: T): T {
   if (typeof window === "undefined") return fallback
+  if (MEMORY_ONLY_KEYS.has(key)) return fallback
   try {
     const raw = localStorage.getItem(key)
     return raw ? (JSON.parse(raw) as T) : fallback
@@ -37,7 +49,27 @@ function readLocal<T>(key: StorageKey, fallback: T): T {
 
 function writeLocal(key: StorageKey, value: unknown) {
   if (typeof window === "undefined") return
-  localStorage.setItem(key, JSON.stringify(value))
+  if (MEMORY_ONLY_KEYS.has(key)) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (err) {
+    console.warn(
+      `localStorage write failed for ${key}; keeping in-memory/cloud only.`,
+      err
+    )
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function readMeta(): Partial<Record<StorageKey, string>> {
@@ -52,7 +84,11 @@ function readMeta(): Partial<Record<StorageKey, string>> {
 
 function writeMeta() {
   if (typeof window === "undefined") return
-  localStorage.setItem(META_STORAGE_KEY, JSON.stringify(keyUpdatedAt))
+  try {
+    localStorage.setItem(META_STORAGE_KEY, JSON.stringify(keyUpdatedAt))
+  } catch (err) {
+    console.warn("localStorage meta write failed", err)
+  }
 }
 
 function touchKey(key: StorageKey, updatedAt = new Date().toISOString()) {
@@ -240,6 +276,16 @@ export async function initDataStore() {
 
     usingCloud = isSupabaseConfigured() && Boolean(supabase)
 
+    if (typeof window !== "undefined") {
+      for (const key of MEMORY_ONLY_KEYS) {
+        try {
+          localStorage.removeItem(key)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
     if (!usingCloud) {
       for (const key of STORAGE_KEYS) {
         cache[key] = readLocal(key, [])
@@ -251,38 +297,48 @@ export async function initDataStore() {
 
     try {
       for (const key of STORAGE_KEYS) {
-        const local = readLocal(key, [])
-        const remote = await fetchRemoteKey(key)
+        try {
+          const local = readLocal(key, [])
+          const remote = await fetchRemoteKey(key)
 
-        if (remote === null) {
+          if (remote === null) {
+            // Never seed cloud with empty local for memory-only keys
+            if (MEMORY_ONLY_KEYS.has(key) && isEmptyArray(local)) {
+              cache[key] = []
+              continue
+            }
+            cache[key] = local
+            writeLocal(key, local)
+            touchKey(key)
+            await uploadKey(key, local)
+            continue
+          }
+
+          const localUpdatedAt = keyUpdatedAt[key]
+          const remoteUpdatedAt = remote.updatedAt
+
+          // Prefer non-empty remote over empty local even if local meta is newer
+          // (avoids wiping cloud dailySales/creatorLinks after a quota failure).
+          const preferRemote =
+            !localUpdatedAt ||
+            MEMORY_ONLY_KEYS.has(key) ||
+            (isEmptyArray(local) && !isEmptyArray(remote.data)) ||
+            new Date(remoteUpdatedAt) >= new Date(localUpdatedAt)
+
+          if (preferRemote) {
+            applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
+            continue
+          }
+
           cache[key] = local
           writeLocal(key, local)
-          touchKey(key)
           await uploadKey(key, local)
-          continue
+        } catch (keyErr) {
+          console.error(`Failed syncing ${key}; continuing with others.`, keyErr)
+          if (!(key in cache)) {
+            cache[key] = readLocal(key, [])
+          }
         }
-
-        const localUpdatedAt = keyUpdatedAt[key]
-        const remoteUpdatedAt = remote.updatedAt
-
-        if (!localUpdatedAt) {
-          applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
-          continue
-        }
-
-        if (new Date(remoteUpdatedAt) > new Date(localUpdatedAt)) {
-          applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
-          continue
-        }
-
-        if (new Date(localUpdatedAt) > new Date(remoteUpdatedAt)) {
-          cache[key] = local
-          writeLocal(key, local)
-          await uploadKey(key, local)
-          continue
-        }
-
-        applyRemoteSnapshot(key, remote.data, remoteUpdatedAt)
       }
 
       setupRealtime()
@@ -290,7 +346,9 @@ export async function initDataStore() {
       console.error("Supabase unavailable, using local storage:", err)
       usingCloud = false
       for (const key of STORAGE_KEYS) {
-        cache[key] = readLocal(key, [])
+        if (!(key in cache)) {
+          cache[key] = readLocal(key, [])
+        }
       }
     }
 
