@@ -41,13 +41,7 @@ import {
   type RegionFilter,
 } from "@/lib/streamerFilters"
 
-const PACK_PRICES = {
-  "Singles Pack - Black Edition": 8.38,
-  "Singles Pack - White Edition": 21.97,
-  "Singles Pack - Black Edition (Deposit)": 8.38,
-  "Singles Pack - White Edition (Deposit)": 21.97,
-  "Booster Pack Repack": 8.38,
-}
+import { PACK_PRICES } from "@/lib/productPrices"
 
 type LineItem = {
   type: string

@@ -9,6 +9,8 @@ import {
 import { KpiCard, KpiSectionLabel } from "@/components/kpi/KpiCard"
 import { KpiLineChart } from "@/components/kpi/KpiLineChart"
 import { KpiMultiLineChart } from "@/components/kpi/KpiMultiLineChart"
+import { buildStreamerDemandSignals } from "@/lib/forecast/demandSignals"
+import type { DailySaleRow } from "@/lib/forecast/types"
 import { formatMoney, formatNumber } from "@/lib/kpiFormat"
 import {
   buildStreamerHealthProfiles,
@@ -17,6 +19,7 @@ import {
   type StreamerHealthProfile,
 } from "@/lib/kpiStreamerHealth"
 import type { Order, Streamer } from "@/lib/orderUtils"
+import { useSharedStorage } from "@/lib/useSharedStorage"
 
 export function PerStreamerDashboard({
   orders,
@@ -27,11 +30,36 @@ export function PerStreamerDashboard({
 }) {
   const [search, setSearch] = useState("")
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [dailySales] = useSharedStorage<DailySaleRow[]>("dailySales", [])
 
   const profiles = useMemo(
     () => buildStreamerHealthProfiles(orders, streamers),
     [orders, streamers]
   )
+
+  const signalsByKey = useMemo(() => {
+    const map = new Map<
+      string,
+      ReturnType<typeof buildStreamerDemandSignals>
+    >()
+    for (const profile of profiles) {
+      const streamer =
+        profile.streamerId != null
+          ? streamers.find((s) => s.id === profile.streamerId)
+          : streamers.find(
+              (s) =>
+                s.brandName.toLowerCase() === profile.brandName.toLowerCase()
+            )
+      map.set(
+        profile.key,
+        buildStreamerDemandSignals(streamer, dailySales, {
+          daysSinceLastPaid: profile.daysSinceLastOrder,
+          avgDaysBetweenOrders: profile.avgDaysBetweenOrders,
+        })
+      )
+    }
+    return map
+  }, [profiles, streamers, dailySales])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -52,13 +80,19 @@ export function PerStreamerDashboard({
     )
   }
 
+  const hasAnyDailySales = dailySales.length > 0
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <KpiSectionLabel>STREAMER HEALTH</KpiSectionLabel>
           <p className="text-zinc-500 text-sm -mt-2">
-            Ranked by Paid GMV and recent ordering. Click a row for details.
+            Ranked by Paid GMV and recent ordering
+            {hasAnyDailySales
+              ? " · demand signals from daily sales when available"
+              : ""}
+            . Click a row for details.
           </p>
         </div>
         <div className="text-zinc-600 text-sm tabular-nums">
@@ -77,6 +111,7 @@ export function PerStreamerDashboard({
           <StreamerHealthRow
             key={profile.key}
             profile={profile}
+            signals={signalsByKey.get(profile.key)}
             expanded={expandedKey === profile.key}
             onToggle={() =>
               setExpandedKey((prev) =>
@@ -92,19 +127,27 @@ export function PerStreamerDashboard({
 
 function StreamerHealthRow({
   profile,
+  signals,
   expanded,
   onToggle,
 }: {
   profile: StreamerHealthProfile
+  signals?: ReturnType<typeof buildStreamerDemandSignals>
   expanded: boolean
   onToggle: () => void
 }) {
+  const showDemand = Boolean(signals?.hasDailySales)
+
   return (
     <ListCard>
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left flex flex-col gap-3 px-5 py-4 hover:bg-white/[0.02] transition xl:grid xl:grid-cols-[minmax(0,1.8fr)_repeat(3,minmax(0,0.9fr))_auto] xl:items-center xl:gap-4"
+        className={`w-full text-left flex flex-col gap-3 px-5 py-4 hover:bg-white/[0.02] transition xl:items-center xl:gap-4 ${
+          showDemand
+            ? "xl:grid xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,0.85fr))_auto]"
+            : "xl:grid xl:grid-cols-[minmax(0,1.8fr)_repeat(3,minmax(0,0.9fr))_auto]"
+        }`}
       >
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-zinc-600 text-sm font-medium tabular-nums shrink-0 w-8">
@@ -122,6 +165,9 @@ function StreamerHealthRow({
             <div className="text-zinc-600 text-xs mt-0.5">
               {profile.paidOrderCount} paid order
               {profile.paidOrderCount === 1 ? "" : "s"}
+              {showDemand && signals?.latestInventoryDate
+                ? ` · inv ${signals.latestInventoryDate}`
+                : ""}
             </div>
           </div>
           <div className="text-zinc-600 text-xl shrink-0 xl:hidden">
@@ -129,7 +175,11 @@ function StreamerHealthRow({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 pl-8 xl:contents xl:pl-0">
+        <div
+          className={`grid gap-3 pl-8 xl:contents xl:pl-0 ${
+            showDemand ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+          }`}
+        >
           <div>
             <div className="text-[10px] tracking-[0.2em] text-zinc-600">
               PAID GMV
@@ -141,23 +191,49 @@ function StreamerHealthRow({
 
           <div>
             <div className="text-[10px] tracking-[0.2em] text-zinc-600">
-              DAYS SINCE
+              DAYS SINCE PAID
             </div>
             <div className="text-sm font-semibold text-white tabular-nums mt-1">
               {profile.daysSinceLastOrder}
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] tracking-[0.2em] text-zinc-600">
-              CHURN RISK
+          {showDemand ? (
+            <>
+              <div>
+                <div className="text-[10px] tracking-[0.2em] text-zinc-600">
+                  WEIGHTED RATE B/W
+                </div>
+                <div className="text-sm font-semibold text-white tabular-nums mt-1">
+                  {fmtRate(signals?.weightedBlackDailyRate)} /{" "}
+                  {fmtRate(signals?.weightedWhiteDailyRate)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] tracking-[0.2em] text-zinc-600">
+                  INV AGE / CADENCE
+                </div>
+                <div className="text-sm font-semibold text-zinc-300 tabular-nums mt-1">
+                  {signals?.inventoryAgeDays != null
+                    ? `${signals.inventoryAgeDays}d`
+                    : "—"}
+                  <span className="text-zinc-600 mx-1">·</span>
+                  {signals?.cadenceWindowLabel ?? "—"}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div>
+              <div className="text-[10px] tracking-[0.2em] text-zinc-600">
+                CHURN RISK
+              </div>
+              <span
+                className={`inline-flex mt-1 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${churnRiskStyles(profile.churnRisk)}`}
+              >
+                {churnRiskLabel(profile.churnRisk)}
+              </span>
             </div>
-            <span
-              className={`inline-flex mt-1 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${churnRiskStyles(profile.churnRisk)}`}
-            >
-              {churnRiskLabel(profile.churnRisk)}
-            </span>
-          </div>
+          )}
         </div>
 
         <div className="hidden xl:block text-zinc-600 text-xl shrink-0 pr-1">
@@ -165,15 +241,19 @@ function StreamerHealthRow({
         </div>
       </button>
 
-      {expanded && <StreamerExpandedDetails profile={profile} />}
+      {expanded && (
+        <StreamerExpandedDetails profile={profile} signals={signals} />
+      )}
     </ListCard>
   )
 }
 
 function StreamerExpandedDetails({
   profile,
+  signals,
 }: {
   profile: StreamerHealthProfile
+  signals?: ReturnType<typeof buildStreamerDemandSignals>
 }) {
   const valueSeries = profile.orders.map((o) => ({
     shortLabel: o.shortLabel,
@@ -204,6 +284,52 @@ function StreamerExpandedDetails({
           {profile.daysSinceLastOrder === 1 ? "" : "s"} ago
         </span>
       </div>
+
+      {signals?.hasDailySales && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard label="WEIGHTED BLACK RATE">
+            <div className="mt-3 text-3xl font-black tabular-nums text-white">
+              {fmtRate(signals.weightedBlackDailyRate)}
+              <span className="text-lg text-zinc-500 font-bold ml-1">
+                / day
+              </span>
+            </div>
+          </KpiCard>
+          <KpiCard label="WEIGHTED WHITE RATE">
+            <div className="mt-3 text-3xl font-black tabular-nums text-cyan-400">
+              {fmtRate(signals.weightedWhiteDailyRate)}
+              <span className="text-lg text-zinc-500 font-bold ml-1">
+                / day
+              </span>
+            </div>
+          </KpiCard>
+          <KpiCard label="INVENTORY SNAPSHOT AGE">
+            <div className="mt-3 text-3xl font-black tabular-nums text-white">
+              {signals.inventoryAgeDays != null
+                ? signals.inventoryAgeDays
+                : "—"}
+              {signals.inventoryAgeDays != null && (
+                <span className="text-lg text-zinc-500 font-bold ml-1">
+                  Days
+                </span>
+              )}
+            </div>
+            <div className="mt-2 text-xs text-zinc-600">
+              {signals.latestInventoryDate
+                ? `As of ${signals.latestInventoryDate}`
+                : "No inventory date"}
+            </div>
+          </KpiCard>
+          <KpiCard label="CADENCE WINDOW">
+            <div className="mt-3 text-2xl font-black text-cyan-400">
+              {signals.cadenceWindowLabel ?? "—"}
+            </div>
+            <div className="mt-2 text-xs text-zinc-600">
+              From median reorder ± 2 days
+            </div>
+          </KpiCard>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="AVG. PAID ORDER VALUE">
@@ -333,4 +459,9 @@ function StreamerExpandedDetails({
       </div>
     </div>
   )
+}
+
+function fmtRate(n: number | null | undefined) {
+  if (n == null || !Number.isFinite(n)) return "—"
+  return formatNumber(n, 1)
 }

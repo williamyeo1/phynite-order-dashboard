@@ -56,17 +56,19 @@ export function MetricsGrid({
   className = "",
 }: {
   children: ReactNode
-  columns?: 2 | 3 | 4 | 7
+  columns?: 2 | 3 | 4 | 6 | 7
   className?: string
 }) {
   const colClass =
     columns === 7
       ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-7"
-      : columns === 4
-        ? "grid-cols-2 xl:grid-cols-4"
-        : columns === 2
-          ? "grid-cols-2"
-          : "grid-cols-1 sm:grid-cols-3"
+      : columns === 6
+        ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-6"
+        : columns === 4
+          ? "grid-cols-2 xl:grid-cols-4"
+          : columns === 2
+            ? "grid-cols-2"
+            : "grid-cols-1 sm:grid-cols-3"
 
   return (
     <div className={`grid ${colClass} gap-5 ${className}`}>{children}</div>
