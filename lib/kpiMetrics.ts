@@ -15,6 +15,7 @@ import {
   type Order,
   type Streamer,
 } from "@/lib/orderUtils"
+import { isChaseProduct } from "@/lib/productPrices"
 
 export type GmvForecasts = Record<string, number>
 
@@ -37,7 +38,7 @@ export function getOrderGmv(order: Order) {
 
 export function getOrderPacks(order: Order) {
   return order.products
-    .filter((p) => !p.type.includes("Deposit"))
+    .filter((p) => !p.type.includes("Deposit") && !isChaseProduct(p.type))
     .reduce((sum, p) => sum + p.qty, 0)
 }
 

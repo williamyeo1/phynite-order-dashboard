@@ -41,12 +41,16 @@ import {
   type RegionFilter,
 } from "@/lib/streamerFilters"
 
-import { PACK_PRICES } from "@/lib/productPrices"
+import {
+  defaultPriceForLineItem,
+  isChaseProduct,
+  LINE_ITEM_TYPES,
+} from "@/lib/productPrices"
 
 type LineItem = {
   type: string
   qty: number
-  price: number
+  price: number | ""
   oldModel?: boolean
 }
 
@@ -207,7 +211,9 @@ export default function OrdersPage() {
       const packCount = order.products.reduce(
         (sum: number, item: any) =>
           sum +
-          (item.type.includes("Deposit") ? 0 : item.qty),
+          (item.type.includes("Deposit") || isChaseProduct(item.type)
+            ? 0
+            : item.qty),
         0
       )
 
@@ -219,6 +225,11 @@ export default function OrdersPage() {
     if (!streamer) return
 
     const orderId = editingId || Date.now()
+    const products = lineItems.map((item) => ({
+      ...item,
+      qty: Number(item.qty) || 0,
+      price: Number(item.price) || 0,
+    }))
 
     setOrders((prev) => {
       const existingOrder = editingId
@@ -229,7 +240,7 @@ export default function OrdersPage() {
         id: orderId,
         streamer,
         date: orderDate,
-        products: lineItems,
+        products,
         shipping,
         scanner: scannerQuantity > 0,
         scannerQuantity,
@@ -254,7 +265,7 @@ export default function OrdersPage() {
     )
 
     if (!invoiceExists) {
-      const productTotal = lineItems.reduce(
+      const productTotal = products.reduce(
         (sum: number, item: any) => sum + item.qty * item.price,
         0
       )
@@ -270,7 +281,7 @@ export default function OrdersPage() {
         invoiceNumber: `INV-${Date.now()}`,
         orderId,
         streamer,
-        products: lineItems,
+        products,
         shipping,
         scanner: scannerQuantity > 0,
         scannerQuantity,
@@ -1030,10 +1041,7 @@ William Yeo
                       e.target.value
 
                     updated[index].price =
-                      PACK_PRICES[
-                        e.target
-                          .value as keyof typeof PACK_PRICES
-                      ]
+                      defaultPriceForLineItem(e.target.value)
 
                     if (!e.target.value.includes("Black")) {
                       updated[index].oldModel = false
@@ -1043,9 +1051,7 @@ William Yeo
                   }}
                   className="w-full bg-black border border-white/10 rounded-2xl px-5 py-4 mb-4 text-lg"
                 >
-                  {Object.keys(
-                    PACK_PRICES
-                  ).map((type) => (
+                  {LINE_ITEM_TYPES.map((type) => (
                     <option key={type}>
                       {type}
                     </option>
@@ -1081,9 +1087,9 @@ William Yeo
                       ]
 
                       updated[index].price =
-                        Number(
-                          e.target.value
-                        )
+                        e.target.value === ""
+                          ? ""
+                          : Number(e.target.value)
 
                       setLineItems(updated)
                     }}
