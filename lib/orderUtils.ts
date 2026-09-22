@@ -75,7 +75,6 @@ export type Streamer = {
   ukPostal: string
   socials: string[]
   onboardedAt?: string
-  /** External sell-rate / TikTok creator id for daily sales matching. */
 }
 
 export const BATCH_SIZE = 450
