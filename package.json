@@ -6,10 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "import:daily-sales": "node --import tsx scripts/import-daily-sales.ts"
+    "lint": "eslint"
   },
   "dependencies": {
     "@fontsource/poppins": "^5.2.7",
@@ -31,8 +28,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
-    "tsx": "^4.23.13",
-    "typescript": "^5",
-    "vitest": "^3.2.7"
+    "typescript": "^5"
   }
 }

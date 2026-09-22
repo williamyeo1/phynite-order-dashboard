@@ -39,6 +39,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# Local CLI forecast import output (large; regenerate via npm run import:daily-sales)
-/data/forecast/store.json

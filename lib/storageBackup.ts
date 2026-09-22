@@ -9,12 +9,6 @@ export const STORAGE_KEYS = [
   "invoices",
   "gmvForecasts",
   "tickets",
-  "dailySales",
-  "dailySalesImports",
-  "creatorLinks",
-  "ignoredCreators",
-  "demandForecasts",
-  "inventoryConfirmations",
 ] as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[number]
