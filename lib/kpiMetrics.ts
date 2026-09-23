@@ -259,7 +259,7 @@ export function lastPaidByStreamer(rows: PaidOrderRow[]) {
 export function totalActiveStreamers(
   rows: PaidOrderRow[],
   asOf: Date = new Date(),
-  activeDays = 90
+  activeDays = 30
 ) {
   const asOfDay = startOfDay(asOf)
   const cutoff = new Date(asOfDay)

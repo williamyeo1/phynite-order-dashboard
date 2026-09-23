@@ -418,7 +418,7 @@ export default function KpiPage() {
                   </span>
                 </div>
                 <div className="mt-6 text-sm text-zinc-500">
-                  Paid order within the last 90 days
+                  Paid order within the last 30 days
                 </div>
               </KpiCard>
             </div>
